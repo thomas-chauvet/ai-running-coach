@@ -43,8 +43,41 @@ LOG_FILE="$LOG_DIR/sync-$(date +%F).log"
 LOCK_FILE="$LOG_DIR/.sync.lock"
 NOTIFY="$ARC_ENGINE_ROOT/scripts/notify.sh"
 
+# Complète les liens vers le moteur dans le workspace (scripts/, et les
+# catalogues skills/agents sous .claude, .opencode, .github s'ils existent),
+# sans rien retirer ni toucher cron/systemd/ntfy — un simple `./install.sh`
+# complet est hors périmètre d'un run cron non surveillé. Nécessaire parce
+# qu'un skill ajouté au moteur (ex. workspace-data-contract le 23/09) reste
+# invisible du workspace tant que personne ne relance `./install.sh` à la
+# main ; jusque-là, la sync se dégrade en silence pendant des jours au lieu
+# d'échouer une fois, bruyamment.
+ensure_engine_links() {
+    [[ -d "$ARC_ENGINE_ROOT" ]] || die "Moteur introuvable : $ARC_ENGINE_ROOT (ARC_ENGINE_ROOT/lien scripts cassé) — relancez ./install.sh."
+    if [[ ! -e "$ARC_WORKSPACE/scripts" ]]; then
+        ln -sfn "$ARC_ENGINE_ROOT/scripts" "$ARC_WORKSPACE/scripts"
+        warn "Lien recréé : $ARC_WORKSPACE/scripts -> $ARC_ENGINE_ROOT/scripts"
+    fi
+    [[ -f "$ARC_WORKSPACE/scripts/arc_index.py" ]] \
+        || die "scripts/arc_index.py introuvable après relink — moteur incomplet dans $ARC_ENGINE_ROOT."
+
+    local cat catalog_dir engine_item name
+    for cat in skills agents; do
+        for catalog_dir in "$ARC_WORKSPACE/$cat" "$ARC_WORKSPACE"/.claude/"$cat" "$ARC_WORKSPACE"/.opencode/"$cat" "$ARC_WORKSPACE"/.github/"$cat"; do
+            [[ -d "$catalog_dir" ]] || continue   # catalogue non déployé ici : rien à compléter
+            for engine_item in "$ARC_ENGINE_ROOT/$cat"/*; do
+                [[ -e "$engine_item" ]] || continue
+                name="$(basename "$engine_item")"
+                [[ -e "$catalog_dir/$name" ]] && continue
+                ln -sfn "$engine_item" "$catalog_dir/$name"
+                warn "Lien ajouté (catalogue en retard sur le moteur) : $catalog_dir/$name"
+            done
+        done
+    done
+}
+
 [[ -f "$SKILL_FILE" ]] || die "Skill introuvable : $SKILL_FILE"
 mkdir -p "$LOG_DIR"
+ensure_engine_links
 
 # Outils autorisés en mode non interactif : serveur MCP garmin (tous ses outils),
 # délégation au coach (Agent/Task), skills, lecture/écriture des MD, scripts

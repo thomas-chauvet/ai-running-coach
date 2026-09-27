@@ -417,8 +417,12 @@ populate_catalog() {
 # Entrées que le bloc généré doit contenir. Une installation plus ancienne a
 # déjà un bloc : on n'y ajoute que ce qui manque (sinon une nouvelle entrée,
 # comme l'index du tableau de bord, n'atteindrait jamais les workspaces existants).
+# /scripts SANS slash final : un pattern gitignore à slash final ne matche que
+# les vrais dossiers, jamais un lien symbolique vers un dossier — /scripts/
+# laissait `git add -A` suivre et commettre le lien vers le moteur (chemin
+# absolu figé), qui se retrouvait cassé au prochain clone sur une autre machine.
 WORKSPACE_IGNORES=(
-    /agents/ /skills/ /scripts/ /AGENTS.md /config/workspace.toml config/workspace.user.toml
+    /agents/ /skills/ /scripts /AGENTS.md /config/workspace.toml config/workspace.user.toml
     /.mcp.json /.claude/ /.opencode/ /.gemini/ /.cursor/ /.windsurf/ /.github/agents /.github/skills
     /logs/ /.arc/ .DS_Store __pycache__/
 )
@@ -468,7 +472,7 @@ $marker
 # racine pour ne pas masquer local/agents et local/skills (versionnés)
 /agents/
 /skills/
-/scripts/
+/scripts
 /AGENTS.md
 /config/workspace.toml
 # Config personnelle : contient le sujet ntfy, qui fait office de secret

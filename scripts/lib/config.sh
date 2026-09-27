@@ -14,8 +14,12 @@
 #                     (écrit par ./install.sh --workspace), sinon le moteur lui-même.
 # =============================================================================
 
-ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd)"
+# -P (physique) : ce fichier est presque toujours atteint via le lien
+# workspace/scripts -> moteur/scripts. `pwd` (logique) laisserait ARC_LIB_DIR
+# sous le workspace et ferait remonter ARC_ENGINE_ROOT vers le workspace au
+# lieu du moteur — les deux racines se confondraient silencieusement.
+ARC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+ARC_ENGINE_ROOT="$(cd "$ARC_LIB_DIR/../.." && pwd -P)"
 ARC_WORKSPACE_STATE_FILE="$HOME/.config/ai-running-coach/workspace"
 if [[ -z "${ARC_WORKSPACE:-}" && -f "$ARC_WORKSPACE_STATE_FILE" ]]; then
     ARC_WORKSPACE="$(head -n1 "$ARC_WORKSPACE_STATE_FILE")"
