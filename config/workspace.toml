@@ -43,6 +43,15 @@ lookback_days = 2
 # (voir docs/workspace.md). Le push exige un remote accessible sans mot de passe (clé SSH).
 git_autocommit = false
 
+[integrations]
+# Repérage automatique des PR de segments Strava (skill `strava-highlights`) après
+# chaque séance persistée par garmin-daily-sync — plié dans la ligne "Séances" de la
+# notification, jamais une alerte. Strava reste TERTIAIRE (voir AGENTS.md) : jamais
+# une source de persistance des données brutes d'activité. Se dégrade silencieusement
+# si le connecteur claude.ai Strava est indisponible, non autorisé, ou injoignable en
+# mode cron non interactif — aucun impact sur le sync Garmin lui-même.
+strava_highlights = true
+
 [athlete]
 # Profil de l'athlète : fichier Markdown libre, dans votre workspace, jamais
 # versionné dans le dépôt public. Créé par `/coach-setup` depuis

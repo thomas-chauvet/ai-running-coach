@@ -1,6 +1,6 @@
 ---
 name: garmin-daily-sync
-description: Use for the unattended (headless/cron) Garmin synchronisation — invoked as /garmin-daily-sync by scripts/daily-sync.sh, from the phone (Remote Control) or from the IDE. Orchestrates the coach agent + garmin-sync-efficiency to persist the last days of activities/sleep/HRV/readiness as Markdown, checks each newly persisted running/trail session for a session-load spike (session-load-spike skill, Nielsen et al. BJSM 2025;59(17):1203), then emits a short ```resume``` block for the notification (including any 🟠/🔴 spike alert). Never asks questions.
+description: Use for the unattended (headless/cron) Garmin synchronisation — invoked as /garmin-daily-sync by scripts/daily-sync.sh, from the phone (Remote Control) or from the IDE. Orchestrates the coach agent + garmin-sync-efficiency to persist the last days of activities/sleep/HRV/readiness as Markdown, checks each newly persisted running/trail session for a session-load spike (session-load-spike skill, Nielsen et al. BJSM 2025;59(17):1203) and for Strava segment PRs (strava-highlights skill, TERTIARY, silent no-op if unavailable), then emits a short ```resume``` block for the notification (including any 🟠/🔴 spike alert and any Strava PR celebration). Never asks questions.
 ---
 
 # Garmin Daily Sync — Skill (orchestration headless)
@@ -48,11 +48,18 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > --distance-km <distance> --dir activities/ --quiet` (session-specific load spike,
    > Nielsen et al., BJSM 2025;59(17):1203); if the category is 🟠 or 🔴, keep the one-line
    > result to fold into the alert line below — 🟢/🟡 results are not worth a notification line.
-   > Never dump raw JSON into the conversation. Do not ask questions. Do not push anything
-   > to the Garmin calendar. Reply with: the list of files created, and a 5-line maximum
-   > summary (new activities: type/distance/D+/HR avg/HRR; sleep score; HRV status vs
-   > baseline; readiness score; any alert such as low HRV, poor sleep, HRR missing, or a
-   > 🟠/🔴 session-load spike with its ratio and hazard ratio).
+   > Then check `mcp__claude_ai_Strava__eligibility` once for the whole run (not per
+   > activity); if eligible, load the `strava-highlights` skill and, for each newly
+   > persisted activity, look for a matching Strava activity of the same day and, if it
+   > has segment PRs, fold the tier count + best segment name into the "Séances" summary
+   > line (never a 6th line). Any Strava-related failure at any step (eligibility,
+   > matching, MCP call) is caught and ignored silently — never an `ERREUR` line, never a
+   > blocked sync. Never dump raw JSON into the conversation. Do not ask questions. Do not
+   > push anything to the Garmin calendar. Reply with: the list of files created, and a
+   > 5-line maximum summary (new activities: type/distance/D+/HR avg/HRR, plus any Strava
+   > PR celebration folded into the same line; sleep score; HRV status vs baseline;
+   > readiness score; any alert such as low HRV, poor sleep, HRR missing, or a 🟠/🔴
+   > session-load spike with its ratio and hazard ratio).
 2. Réindexer le workspace pour le tableau de bord : `python3 scripts/arc_index.py`. La base
    est dérivée ; un échec ici ne bloque rien, mais se signale en une ligne `Alerte :` du
    résumé. Un fichier resté `NON CONFORME` à la validation se signale de la même façon
@@ -87,6 +94,19 @@ Sommeil : 7 h 42, score 81
 HRV : 62 ms — équilibré (baseline 58-66)
 Readiness : 74
 Alerte : spike de charge 🟠 modéré (1.54×, HRR≈1.52) — 12,3 km vs 8,0 km le 2026-08-25
+```
+````
+
+Exemple avec des PR de segments Strava détectés sur la séance (skill `strava-highlights`,
+pliés dans la ligne `Séances`, jamais une 6e ligne — bonne nouvelle, pas une `Alerte`) :
+
+````
+```resume
+Séances : 1 nouvelle — trail 12,3 km / 480 m D+ / FC moy 148 / HRR 28 bpm (2026-09-20) — 🏆 10 PR Strava (1🥇 6🥈 1🥉), record sur « Le Lavancher bas/Le Lavancher haut »
+Sommeil : 7 h 42, score 81
+HRV : 62 ms — équilibré (baseline 58-66)
+Readiness : 74
+Alerte : aucune
 ```
 ````
 

@@ -82,7 +82,13 @@ ensure_engine_links
 # Outils autorisés en mode non interactif : serveur MCP garmin (tous ses outils),
 # délégation au coach (Agent/Task), skills, lecture/écriture des MD, scripts
 # Python du projet. Rien d'autre.
-CLAUDE_TOOLS="mcp__garmin,mcp__leanproxy,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,Bash(python3:*)"
+# mcp__claude_ai_Strava est un connecteur de COMPTE claude.ai (pas un serveur
+# déclaré dans .mcp.json, contrairement à garmin) — l'ajouter ici est nécessaire
+# pour le skill strava-highlights mais NON garanti suffisant : son accessibilité
+# en mode `claude -p` headless (ce runner) est non vérifiée. Si l'auth ne passe
+# pas, le skill se dégrade silencieusement (voir garmin-daily-sync/SKILL.md) —
+# aucun impact sur le sync Garmin lui-même.
+CLAUDE_TOOLS="mcp__garmin,mcp__leanproxy,mcp__claude_ai_Strava,Agent,Task,Skill,Read,Write,Edit,Glob,Grep,Bash(python3:*)"
 # En mode -p, un serveur MCP déclaré dans .mcp.json (portée projet) n'est chargé
 # que s'il a été approuvé interactivement ; on le passe explicitement.
 MCP_CONFIG="$ARC_WORKSPACE/.mcp.json"
