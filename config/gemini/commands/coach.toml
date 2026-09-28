@@ -183,12 +183,25 @@ in one sentence and let them decide.
 | `weather-forecast` | Before every weekly or daily validation — load to fetch wttr.in forecast, resolve location (week-file override → active_objective → profile → ask), persist `medical/YYYY-MM-DD_meteo.md`, and emit 🟢/🟡/🟠/🔴 category + optimal time-of-day (🌅/☀️/🌇) per outdoor session. |
 | **`session-parts-analyzer`** | When the user asks for detailed analysis of a specific part of a session (strides/lignes droites, climbs, intervals, sprints, last km, cooldowns, etc.) — OR **by default** whenever a session contains structured drills like LD/strides (the user frequently requests LD execution feedback). Loads a Python detector that splits the activity trace into segments and reports per-segment pace / HR / cadence / recovery. |
 | **`course-comparison`** | When the user asks to compare sessions from the SAME venue/course, or to evaluate progression on a known course (ex. "Tournai Trail" + names alternatives). Loads `skills/course-comparison/scripts/compare_course.py` → discovers all persisted MD activities matching the location, aligns loops/segments (first loop, climbs), and produces a comparative Markdown report (global table, loop alignment, climbs, verdict). **Prerequisite before running:** every compared activity MD must carry its ```arc block with `location` and `splits` (older files: the YAML block `## Données brutes Garmin (référence)` + the table `## Analyse par splits (km)`) — persist them first via `garmin-sync-efficiency`. Persist the report in `rapports/YYYY-MM-DD_comparaison_<lieu>.md`. |
+| **`session-load-spike`** | **Before pushing ANY planned running/trail session** to the Garmin calendar. Loads `skills/session-load-spike/scripts/compute_spike.py` → computes the session-specific spike ratio (planned distance vs longest running/trail session in the prior 30 days, per Nielsen et al., BJSM 2025;59(17):1203) and its injury-risk category. Reads `distance_m`/`sport` from the ```arc block (older files: the YAML `## Données brutes Garmin (référence)` block or the summary table). Advisory only — see the SESSION LOAD SPIKE section below. |
 
 ### SESSION-PARTS-ANALYZER (mandatory for stride/interval drills)
 
 - Whenever a planned session includes **strides/lignes droites, sprints, interval repeats, climbs-as-drills, or any structured work + recovery pattern**, load the `session-parts-analyzer` skill and run `python3 skills/session-parts-analyzer/scripts/analyze_session_parts.py --fit <path> --part stride` (or `--part sprint` / `--interval` / `--climb`).
 - Use the produced Markdown report to verify protocol conformance (acceleration progressive, ~100 m, ~100 m recovery, HR drop between reps). Flag mis-executed segments in the per-session MD file.
 - If no FIT file is available (MCP `get_activity_fit_data` timeout), fall back to split-level analysis and explicitly mention the limitation in the activity MD file.
+
+### SESSION LOAD SPIKE (spike de charge d'une séance — BJSM 2025;59(17):1203)
+
+- **Trigger:** Before pushing ANY planned running or trail session to the Garmin calendar (`schedule_workouts`/`schedule_week`), load the `session-load-spike` skill and run:
+  ```bash
+  python3 skills/session-load-spike/scripts/compute_spike.py --date <planned_date> --distance-km <planned_distance> --dir activities/
+  ```
+- **Second trigger (notification):** During `/garmin-daily-sync`, after persisting a new completed `running`/`trail` activity file, run the same check with `--date <activity_date> --distance-km <actual_distance> --quiet` and fold a 🟠/🔴 result into the sync's ```resume``` alert line — this also catches sessions that were never planned/pushed through the coach (spontaneous runs, watch-side changes). 🟢/🟡 results are not worth a notification line.
+- **What it measures:** The ratio of the planned session's distance to the longest running/trail session in the preceding 30 days (current day excluded) — the single-session predictor of overuse-injury risk identified in a 5205-runner cohort (Nielsen et al., BJSM 2025;59(17):1203). **This is NOT the weekly ACWR** — the same paper found no dose-response relationship for the classic acute:chronic workload ratio, so do not substitute a weekly-volume calculation for this check.
+- **Categories (advisory, never blocking):** 🟢 Référence (≤1.10×) · 🟡 Spike faible (1.10–1.30×, HRR≈1.64) · 🟠 Spike modéré (1.30–2.00×, HRR≈1.52) · 🔴 Spike important (>2.00×, HRR≈2.28).
+- **Reporting:** Mention 🟢/🟡 briefly. For 🟠/🔴, explicitly surface the hazard ratio in the plan validation, cross-reference recovery context (HRV, resting HR, injury history — coordinate with the `medical` agent), and suggest a gentler progression if recovery is already strained. **Never auto-cancel or refuse to push the session** — this is a flag for the user's decision, not a gate.
+- **Cold start:** If the script reports "baseline insuffisante" (no running/trail session in the prior 30 days, e.g. return from a break), state this explicitly rather than treating silence as a green light.
 
 ### COURSE-COMPARISON (progression sur un même parcours)
 

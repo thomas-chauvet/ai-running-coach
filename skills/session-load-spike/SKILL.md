@@ -1,6 +1,6 @@
 ---
 name: session-load-spike
-description: Use before pushing ANY planned running/trail session to the Garmin calendar. Computes the "session-specific spike" metric from Nielsen et al., BJSM 2025;59(17):1203 (5205-runner cohort) — ratio of the planned session's distance to the longest running/trail session in the preceding 30 days — and reports the injury-risk category (reference/small/moderate/large spike) with its hazard ratio. Advisory only, never blocks scheduling. Do not use for weekly ACWR (the paper found no dose-response there); this is a single-session check.
+description: Use before pushing ANY planned running/trail session to the Garmin calendar, AND after garmin-daily-sync persists a new completed running/trail session. Computes the "session-specific spike" metric from Nielsen et al., BJSM 2025;59(17):1203 (5205-runner cohort) — ratio of the session's distance to the longest running/trail session in the preceding 30 days — and reports the injury-risk category (reference/small/moderate/large spike) with its hazard ratio. Advisory only, never blocks scheduling; a 🟠/🔴 result on a newly-synced session is also surfaced in the daily-sync push notification. Do not use for weekly ACWR (the paper found no dose-response there); this is a single-session check.
 ---
 
 # Skill: session-load-spike
@@ -42,6 +42,11 @@ ratio = distance de la séance évaluée / plus longue distance parmi les
   les longues sorties et les séances de fin de bloc.
 - Lors de la validation hebdomadaire d'un plan, pour chaque sortie longue
   running/trail du bloc.
+- **Après coup, pour chaque séance running/trail nouvellement persistée par
+  `garmin-daily-sync`** (`--date`/`--distance-km` = ceux de la séance réellement
+  effectuée) — pour signaler un spike 🟠/🔴 dans la notification push, même
+  quand la séance n'a jamais été planifiée/poussée via le coach (rattrapage,
+  sortie spontanée, séance modifiée sur la montre).
 
 **Ne PAS utiliser** pour les séances non running/trail (renfo, vélo, natation),
 ni comme substitut à un calcul ACWR hebdomadaire (le papier montre que ce
@@ -54,6 +59,15 @@ python3 skills/session-load-spike/scripts/compute_spike.py \
   --date 2026-09-28 \
   --distance-km 24 \
   --dir activities/
+```
+
+Pour la notification (`garmin-daily-sync`), utiliser `--quiet` (sortie une ligne,
+directement réutilisable dans le bloc ```resume) :
+
+```bash
+python3 skills/session-load-spike/scripts/compute_spike.py \
+  --date 2026-09-20 --distance-km 12.3 --dir activities/ --quiet
+# 🟠 Spike modéré (1.54×) — 12.3 km vs 8.0 km le 2026-08-25
 ```
 
 1. **Calculer** le spike avec le script pour chaque séance running/trail

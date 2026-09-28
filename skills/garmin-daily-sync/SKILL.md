@@ -1,6 +1,6 @@
 ---
 name: garmin-daily-sync
-description: Use for the unattended (headless/cron) Garmin synchronisation — invoked as /garmin-daily-sync by scripts/daily-sync.sh, from the phone (Remote Control) or from the IDE. Orchestrates the coach agent + garmin-sync-efficiency to persist the last days of activities/sleep/HRV/readiness as Markdown, then emits a short ```resume``` block for the notification. Never asks questions.
+description: Use for the unattended (headless/cron) Garmin synchronisation — invoked as /garmin-daily-sync by scripts/daily-sync.sh, from the phone (Remote Control) or from the IDE. Orchestrates the coach agent + garmin-sync-efficiency to persist the last days of activities/sleep/HRV/readiness as Markdown, checks each newly persisted running/trail session for a session-load spike (session-load-spike skill, Nielsen et al. BJSM 2025;59(17):1203), then emits a short ```resume``` block for the notification (including any 🟠/🔴 spike alert). Never asks questions.
 ---
 
 # Garmin Daily Sync — Skill (orchestration headless)
@@ -42,11 +42,17 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > with its ```arc JSON block — `kind: activity` with `garmin_activity_id`, `location` and
    > `splits`, `kind: health` with `morning_check` set to the configured mode; document
    > language from `config/workspace.toml` for the prose below the block). Validate each file
-   > with `python3 scripts/arc_index.py --validate <file>` and fix what it reports. Never dump
-   > raw JSON into the conversation. Do not ask questions. Do not push anything
+   > with `python3 scripts/arc_index.py --validate <file>` and fix what it reports. For each
+   > newly persisted `running`/`trail` activity, load the `session-load-spike` skill and run
+   > `python3 skills/session-load-spike/scripts/compute_spike.py --date <activity_date>
+   > --distance-km <distance> --dir activities/ --quiet` (session-specific load spike,
+   > Nielsen et al., BJSM 2025;59(17):1203); if the category is 🟠 or 🔴, keep the one-line
+   > result to fold into the alert line below — 🟢/🟡 results are not worth a notification line.
+   > Never dump raw JSON into the conversation. Do not ask questions. Do not push anything
    > to the Garmin calendar. Reply with: the list of files created, and a 5-line maximum
    > summary (new activities: type/distance/D+/HR avg/HRR; sleep score; HRV status vs
-   > baseline; readiness score; any alert such as low HRV, poor sleep, HRR missing).
+   > baseline; readiness score; any alert such as low HRV, poor sleep, HRR missing, or a
+   > 🟠/🔴 session-load spike with its ratio and hazard ratio).
 2. Réindexer le workspace pour le tableau de bord : `python3 scripts/arc_index.py`. La base
    est dérivée ; un échec ici ne bloque rien, mais se signale en une ligne `Alerte :` du
    résumé. Un fichier resté `NON CONFORME` à la validation se signale de la même façon
@@ -71,5 +77,20 @@ Alerte : aucune
 ```
 ````
 
+Exemple avec un spike de charge 🟠/🔴 détecté sur une séance nouvellement persistée
+(remplace la ligne `Alerte`, ne s'ajoute pas en 6e ligne — 5 lignes maximum toujours) :
+
+````
+```resume
+Séances : 1 nouvelle — trail 12,3 km / 480 m D+ / FC moy 148 / HRR 28 bpm (2026-09-20)
+Sommeil : 7 h 42, score 81
+HRV : 62 ms — équilibré (baseline 58-66)
+Readiness : 74
+Alerte : spike de charge 🟠 modéré (1.54×, HRR≈1.52) — 12,3 km vs 8,0 km le 2026-08-25
+```
+````
+
 Si aucune date ne manquait : `À jour — aucune nouvelle donnée Garmin (dernière séance : YYYY-MM-DD)`.
 Si une étape a échoué : première ligne `ERREUR : <cause courte>`.
+S'il y a plusieurs alertes simultanées (ex. HRV faible ET spike 🟠/🔴), les regrouper sur la
+même ligne `Alerte :` séparées par `; ` — la contrainte de 5 lignes ne s'assouplit jamais.
