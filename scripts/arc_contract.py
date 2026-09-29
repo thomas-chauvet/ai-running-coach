@@ -41,6 +41,8 @@ SPORTS = (
 )
 MORNING_CHECK = ("full", "minimal", "off")
 HRV_STATUS = ("balanced", "unbalanced", "low", "poor", "no_status")
+# Technicité déclarée d'une séance — coefficient appliqué par session-load-spike (km-effort).
+TERRAIN = ("route", "chemin", "single", "technique", "hors_sentier")
 VERDICT = ("green", "amber", "red")
 WEATHER_CATEGORY = ("green", "yellow", "orange", "red")
 SLOT = ("morning", "midday", "evening", "none")
@@ -107,6 +109,9 @@ SCHEMA = {
             "training_effect_aerobic": "num+",
             "training_effect_anaerobic": "num+",
             "rpe": "rpe",
+            "terrain": _enum(TERRAIN),
+            "walk_duration_s": "num+",
+            "exclude_from_load": "bool",
             "splits_cols": "list",
             "splits": "list",
             "missing_reason": "obj",

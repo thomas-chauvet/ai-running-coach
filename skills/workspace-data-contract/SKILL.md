@@ -109,6 +109,9 @@ Types de valeurs ci-dessous : *entier*, *nombre* (≥ 0 sauf mention), *texte*,
 | `calories_kcal` | nombre | |
 | `training_effect_aerobic`, `training_effect_anaerobic` | nombre | 0-5 |
 | `rpe` | 0-10 | effort perçu déclaré — indispensable si la séance n'a pas de FC |
+| `terrain` | `route` `chemin` `single` `technique` `hors_sentier` | technicité du terrain — coefficient du km-effort (`session-load-spike`) ; absent = `route` (running) / `chemin` (trail) |
+| `walk_duration_s` | nombre | temps passé à marcher (typed splits Garmin `RWD_WALK`) — contexte, jamais estimé |
+| `exclude_from_load` | booléen | `true` = séance ignorée par le spike de charge (baseline des 30 jours), sur décision de l'athlète (ex. course objectif) ; dire pourquoi dans le texte |
 | `splits_cols` | liste | en-tête des splits, voir ci-dessous |
 | `splits` | liste | une ligne par km, dans l'ordre de `splits_cols` |
 | `missing_reason` | objet | clé absente → cause |

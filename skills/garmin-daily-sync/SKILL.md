@@ -44,10 +44,11 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
    > language from `config/workspace.toml` for the prose below the block). Validate each file
    > with `python3 scripts/arc_index.py --validate <file>` and fix what it reports. For each
    > newly persisted `running`/`trail` activity, load the `session-load-spike` skill and run
-   > `python3 skills/session-load-spike/scripts/compute_spike.py --date <activity_date>
-   > --distance-km <distance> --dir activities/ --quiet` (session-specific load spike,
-   > Nielsen et al., BJSM 2025;59(17):1203); if the category is 🟠 or 🔴, keep the one-line
-   > result to fold into the alert line below — 🟢/🟡 results are not worth a notification line.
+   > `python3 skills/session-load-spike/scripts/compute_spike.py --from-file
+   > activities/<date>_<type>.md --dir activities/ --quiet` (session-specific load spike,
+   > Nielsen et al., BJSM 2025;59(17):1203, plus exploratory trail dimensions); if the line
+   > holds a 🟠 or 🔴 (distance or an appended trail dimension), keep it to fold into the
+   > alert line below — 🟢/🟡 results are not worth a notification line.
    > Then check `mcp__claude_ai_Strava__eligibility` once for the whole run (not per
    > activity); if eligible, load the `strava-highlights` skill and, for each newly
    > persisted activity, look for a matching Strava activity of the same day and, if it
@@ -112,5 +113,9 @@ Alerte : aucune
 
 Si aucune date ne manquait : `À jour — aucune nouvelle donnée Garmin (dernière séance : YYYY-MM-DD)`.
 Si une étape a échoué : première ligne `ERREUR : <cause courte>`.
+Si le spike distance est 🟢/🟡 mais qu'une dimension trail (km-effort, descente, sRPE) est
+🟠/🔴, le script l'ajoute à la même ligne ; la reprendre telle quelle, marquée exploratoire,
+sans hazard ratio : `Alerte : km-effort 🟠 1.45× (21,8 vs 15,1, exploratoire) — distance 🟢 1.00×`.
+
 S'il y a plusieurs alertes simultanées (ex. HRV faible ET spike 🟠/🔴), les regrouper sur la
 même ligne `Alerte :` séparées par `; ` — la contrainte de 5 lignes ne s'assouplit jamais.

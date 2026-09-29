@@ -23,6 +23,24 @@ ratio = distance de la séance évaluée / plus longue distance parmi les
 | 🟠 Spike modéré | 1.30 – 2.00 | 1.52 (IC95% 1.16–2.00) |
 | 🔴 Spike important | > 2.00 | 2.28 (IC95% 1.50–3.48) |
 
+## Dimensions trail (exploratoires)
+
+La distance seule ne distingue pas 20 km plats de 20 km / 650 m D+. Le script ajoute
+trois spikes **exploratoires** (même logique : séance / max des 30 jours précédents ;
+mêmes seuils, **extrapolés — aucune étude ne les a validés**) :
+
+| Dimension | Calcul | Ce qu'elle capte |
+|---|---|---|
+| **km-effort** | distance pondérée par le coût de la course selon la pente de chaque split (Minetti et al. 2002, descente comptée au moins comme du plat) × coefficient de terrain | dénivelé + technicité |
+| **descente** | D-, ×1.5 au-delà de 10 % de pente | charge excentrique |
+| **sRPE** | RPE × minutes (Foster) | charge interne : allure, terrain, chaleur, fatigue |
+
+Terrain (clé arc `terrain`) : `route` 1.00 · `chemin` 1.05 · `single` 1.10 · `technique`
+1.20 · `hors_sentier` 1.30. La part de marche (`walk_duration_s`) est affichée en contexte,
+sans pondération. Le spike distance reste le verdict (seul avec hazard ratio) ; une
+dimension trail n'apparaît dans la notification que si elle est 🟠/🔴, plus défavorable
+que la distance, et calculée sur une baseline complète.
+
 ## Quand l'utiliser
 
 - **Avant de pousser une séance running/trail planifiée** au calendrier Garmin, notamment
@@ -42,6 +60,16 @@ python3 skills/session-load-spike/scripts/compute_spike.py \
   --date 2026-09-28 --distance-km 24 --dir activities/
 ```
 
+Séance trail planifiée, et séance réalisée lue depuis son fichier :
+
+```bash
+python3 skills/session-load-spike/scripts/compute_spike.py \
+  --date 2026-10-04 --distance-km 22 --elevation-gain-m 1100 \
+  --duration-min 180 --rpe 6 --terrain technique --dir activities/
+python3 skills/session-load-spike/scripts/compute_spike.py \
+  --from-file activities/2026-09-26_trail.md --dir activities/
+```
+
 Sortie une ligne (utilisée pour la notification) :
 
 ```bash
@@ -53,7 +81,11 @@ python3 skills/session-load-spike/scripts/compute_spike.py \
 | Flag | Défaut | Description |
 |---|---|---|
 | `--date` | aujourd'hui | Date de la séance évaluée (YYYY-MM-DD) |
-| `--distance-km` | requis | Distance de la séance, en km |
+| `--distance-km` | requis sauf `--from-file` | Distance de la séance, en km |
+| `--from-file` | — | MD d'une séance réalisée (bloc arc) |
+| `--elevation-gain-m` / `--elevation-loss-m` | — | D+ / D- prévus (D- = D+ par défaut) |
+| `--duration-min`, `--rpe` | — | Pour la sRPE |
+| `--terrain` | selon le sport | `route` `chemin` `single` `technique` `hors_sentier` |
 | `--dir` | `activities/` | Dossier des activités |
 | `--types` | `running,trail` | Types de séance comptant pour la baseline |
 | `--window-days` | 30 | Fenêtre de lookback en jours (per papier) |

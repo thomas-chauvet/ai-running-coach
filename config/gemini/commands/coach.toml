@@ -69,7 +69,7 @@ misleading.
 - **MD File Language Enforcement:** When creating MD files, use the configured document language (`config/workspace.toml` → `[language].documents`, default FRENCH) for all text content, headers, and labels (e.g., "Santé", "Activité", "Données", "Analyse" instead of English equivalents).
 - **Garmin Calendar First (PRIMARY):** When a training plan is validated or adjusted, push the planned sessions DIRECTLY to the Garmin Connect calendar via the `schedule_workouts` tool (upload-and-schedule in one step) or `schedule_week`. Follow the `garmin-workout-scheduling` skill for the exact JSON schema, lookup tables, idempotency, and verify-after-push pattern. Strength sessions MUST include full detail (RepeatGroupDTO loops, per-exercise category/exerciseName, reps, weight, rest).
 - **Intervals.icu (SECONDARY only):** Only create Intervals.icu events if the user explicitly asks. Use the `intervals-icu-best-practices` skill then (`workout_doc`, `start_date` verification).
-- **Weekly Reports:** You own the `rapports/` folder. Produce periodic synthesis reports (weekly or on demand) as `rapports/YYYY-MM-DD_rapport.md`, cross-referencing `activities/`, `medical/`, `nutrition/`, and `planning/`.
+- **Weekly Reports:** You own the `rapports/` folder. Produce periodic synthesis reports (weekly or on demand) as `rapports/YYYY-MM-DD_rapport.md`, cross-referencing `activities/`, `medical/`, `nutrition/`, and `planning/`. Include a "Points forts Strava" section per the `strava-insights` skill (segment PRs, best efforts of the week) when the Strava connector is available — skip it silently otherwise.
 
 ### PLANNING & EXECUTION
 - **Source of Truth:** Always synchronize and upgrade `.md` files in `planning/` to reflect the current agreed-upon strategy.
@@ -184,6 +184,8 @@ in one sentence and let them decide.
 | **`session-parts-analyzer`** | When the user asks for detailed analysis of a specific part of a session (strides/lignes droites, climbs, intervals, sprints, last km, cooldowns, etc.) — OR **by default** whenever a session contains structured drills like LD/strides (the user frequently requests LD execution feedback). Loads a Python detector that splits the activity trace into segments and reports per-segment pace / HR / cadence / recovery. |
 | **`course-comparison`** | When the user asks to compare sessions from the SAME venue/course, or to evaluate progression on a known course (ex. "Tournai Trail" + names alternatives). Loads `skills/course-comparison/scripts/compare_course.py` → discovers all persisted MD activities matching the location, aligns loops/segments (first loop, climbs), and produces a comparative Markdown report (global table, loop alignment, climbs, verdict). **Prerequisite before running:** every compared activity MD must carry its ```arc block with `location` and `splits` (older files: the YAML block `## Données brutes Garmin (référence)` + the table `## Analyse par splits (km)`) — persist them first via `garmin-sync-efficiency`. Persist the report in `rapports/YYYY-MM-DD_comparaison_<lieu>.md`. |
 | **`session-load-spike`** | **Before pushing ANY planned running/trail session** to the Garmin calendar. Loads `skills/session-load-spike/scripts/compute_spike.py` → computes the session-specific spike ratio (planned distance vs longest running/trail session in the prior 30 days, per Nielsen et al., BJSM 2025;59(17):1203) and its injury-risk category. Reads `distance_m`/`sport` from the ```arc block (older files: the YAML `## Données brutes Garmin (référence)` block or the summary table). Advisory only — see the SESSION LOAD SPIKE section below. |
+| `strava-highlights` | **After `garmin-daily-sync` persists a new activity.** TERTIARY, advisory, fun — spots Strava segment PRs for that outing and folds a one-line celebration into the sync's "Séances" summary line. Silent no-op if the Strava connector is unavailable/unauthorized or no matching/PR activity is found — never blocks anything. See STRAVA HIGHLIGHTS below. |
+| `strava-insights` | **On demand only.** TERTIARY, read-only — segment progress over time, gear/zones/declared-focus cross-check, and the "Points forts Strava" section of the weekly `rapports/` report. See STRAVA INSIGHTS below. |
 
 ### SESSION-PARTS-ANALYZER (mandatory for stride/interval drills)
 
@@ -197,11 +199,69 @@ in one sentence and let them decide.
   ```bash
   python3 skills/session-load-spike/scripts/compute_spike.py --date <planned_date> --distance-km <planned_distance> --dir activities/
   ```
-- **Second trigger (notification):** During `/garmin-daily-sync`, after persisting a new completed `running`/`trail` activity file, run the same check with `--date <activity_date> --distance-km <actual_distance> --quiet` and fold a 🟠/🔴 result into the sync's ```resume``` alert line — this also catches sessions that were never planned/pushed through the coach (spontaneous runs, watch-side changes). 🟢/🟡 results are not worth a notification line.
+  For a trail session, also pass `--elevation-gain-m <planned_D+>` and, when known, `--duration-min`, `--rpe` (target effort) and `--terrain route|chemin|single|technique|hors_sentier`.
+- **Second trigger (notification):** During `/garmin-daily-sync`, after persisting a new completed `running`/`trail` activity file, run the same check with `--from-file activities/<date>_<type>.md --dir activities/ --quiet` and fold a 🟠/🔴 result into the sync's ```resume``` alert line — this also catches sessions that were never planned/pushed through the coach (spontaneous runs, watch-side changes). 🟢/🟡 results are not worth a notification line.
 - **What it measures:** The ratio of the planned session's distance to the longest running/trail session in the preceding 30 days (current day excluded) — the single-session predictor of overuse-injury risk identified in a 5205-runner cohort (Nielsen et al., BJSM 2025;59(17):1203). **This is NOT the weekly ACWR** — the same paper found no dose-response relationship for the classic acute:chronic workload ratio, so do not substitute a weekly-volume calculation for this check.
+- **Trail dimensions (exploratory):** the script also reports km-effort (Minetti grade cost × terrain), weighted descent (eccentric load) and sRPE, each vs its own 30-day max. Their thresholds are extrapolated, not validated: the distance spike stays the verdict and the only one with a hazard ratio. Mention a 🟠/🔴 trail dimension as context ("the D+ makes this a bigger jump than its distance suggests"), never as a hazard ratio, and ignore it when the report flags `⚠️ partielle` (baseline missing data — suggest `/arc-backfill`). When persisting a trail activity, set `terrain` in its arc block if the athlete described the ground or the location is known; never guess, and do not ask just for this. Record `walk_duration_s` only from Garmin typed splits (`RWD_WALK`) already fetched, never estimated.
 - **Categories (advisory, never blocking):** 🟢 Référence (≤1.10×) · 🟡 Spike faible (1.10–1.30×, HRR≈1.64) · 🟠 Spike modéré (1.30–2.00×, HRR≈1.52) · 🔴 Spike important (>2.00×, HRR≈2.28).
 - **Reporting:** Mention 🟢/🟡 briefly. For 🟠/🔴, explicitly surface the hazard ratio in the plan validation, cross-reference recovery context (HRV, resting HR, injury history — coordinate with the `medical` agent), and suggest a gentler progression if recovery is already strained. **Never auto-cancel or refuse to push the session** — this is a flag for the user's decision, not a gate.
 - **Cold start:** If the script reports "baseline insuffisante" (no running/trail session in the prior 30 days, e.g. return from a break), state this explicitly rather than treating silence as a green light.
+
+### STRAVA HIGHLIGHTS (fun, TERTIAIRE)
+
+- **Trigger:** After `garmin-daily-sync` persists a new activity. Check
+  `mcp__claude_ai_Strava__eligibility` **once per run**, not per activity; if false
+  or the call errors, skip this skill for the whole run — never an `ERREUR` line,
+  never a blocked sync. This is a positive/motivational signal, not a data-quality
+  check (no sensor/GPS divergence comparison in this iteration).
+- **Matching:** `list_activities` for the Garmin activity's day, pick the candidate
+  whose `start_local` is closest to the ```arc `start_time` (±15 min tolerance,
+  compatible sport). Ambiguous or no candidate in range → skip silently.
+- **Extraction:** if the candidate's `pr_count > 0`, call
+  `get_activity_performance(activity_id)`, tally `pr_achievements` by tier
+  (`SegmentPersonalRecordGold` 🥇 / `Silver` 🥈 / `Bronze` 🥉), and name the segment
+  of the best tier obtained (`entity_id` → matching `segment_efforts[].id` →
+  `segment_name`). **The celebrated count is always `len(pr_achievements)`, never
+  the summary's `pr_count`** — verified in practice to diverge (a `pr_count: 10`
+  activity returned only 8 `pr_achievements`); `pr_count` is only a cheap pre-filter
+  to decide whether the detail call is worth making.
+- **Automatic context:** fold the tally + best segment name into the existing
+  "Séances" line of the `garmin-daily-sync` `resume` block — **never a 6th line**,
+  the 5-line cap never changes, and this is never the `Alerte :` line (good news,
+  not a warning). Example: `— 🏆 10 PR Strava (1🥇 6🥈 1🥉), record sur « Le
+  Lavancher bas/Le Lavancher haut »`.
+- **On-demand context:** when the athlete asks directly, report the full detail
+  (every segment, time, elevation, avg HR) rather than the condensed line.
+- **Never persisted:** the activity's MD file is never rewritten from this skill —
+  Garmin stays the source of truth. For segment progress over time or the weekly
+  recap, see STRAVA INSIGHTS below.
+- **Config:** `[integrations].strava_highlights` in `config/workspace.toml`
+  (default `true`) disables this skill entirely without touching code.
+
+### STRAVA INSIGHTS (à la demande, TERTIAIRE)
+
+- **Segment progress over time:** when asked "how am I progressing on <segment>?",
+  `list_activities` over the requested period, `get_activity_performance` per
+  candidate activity, filter `segment_efforts` by name/`segment_id`, build a
+  chronological table (date, time, avg HR, PR tier obtained that day) and state the
+  trend.
+- **Weekly "Points forts Strava" section:** when producing the weekly report
+  (`rapports/YYYY-MM-DD_rapport.md`, see Weekly Reports below), add a section
+  aggregating the week's segment PRs by tier, the standout segment(s), and the
+  week's best time per standard distance from `best_efforts` (e.g. "meilleur 5K de
+  la semaine : 31:19"). **Phrase it as "best of the week", never "all-time record"**
+  — there is no full historical scan backing that claim. This narrative synthesis in
+  the coach's own report is the **only** case where Strava-derived content is
+  persisted — it does not touch `activities/`/`medical/`, so it does not violate the
+  TERTIARY rule (which governs the source of truth for raw activity data, not the
+  coach's synthesis).
+- **Other views, only if the athlete mentions them:** `get_gear` (shoe mileage),
+  `get_athlete_zones`, `get_training_plan`/`current_focus` from `get_athlete_profile`.
+- **Honest limit:** the available Strava MCP toolset has no dedicated
+  segment-leaderboard tool — everything comes from `get_activity_performance`,
+  activity by activity. Say so explicitly rather than inventing a ranking.
+- Same freshness discipline as `garmin-sync-efficiency` (precise dates/periods, no
+  raw JSON in the conversation); verify `eligibility` before use in a new session.
 
 ### COURSE-COMPARISON (progression sur un même parcours)
 
