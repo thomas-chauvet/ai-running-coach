@@ -4,7 +4,7 @@
 ![](assets/ridge.jpg)
 </div>
 
-`ai-running-coach` fournit **13 skills** que les agents chargent à la demande pour des tâches spécifiques.
+`ai-running-coach` fournit **15 skills** que les agents chargent à la demande pour des tâches spécifiques.
 
 ## Vue d'ensemble
 
@@ -14,6 +14,8 @@
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/course-comparison.md">Comparaison de parcours</a></span><span class="arc-skill__desc">Analyse comparative de séances sur un même parcours/lieu</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-workout-scheduling.md">Planification Garmin</a></span><span class="arc-skill__desc">Push de séances planifiées dans le calendrier Garmin Connect</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/session-load-spike.md">Spike de charge d'une séance</a></span><span class="arc-skill__desc">Risque de blessure de surcharge d'une séance running/trail vs les 30 jours précédents (Nielsen et al., BJSM 2025)</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/strava-highlights.md">Points forts Strava</a></span><span class="arc-skill__desc">PR de segments Strava d'une séance synchronisée, repliés dans la notification quotidienne (tertiaire, jamais bloquant)</span></div>
+<div class="arc-skill"><span class="arc-skill__name"><a href="skills/strava-insights.md">Strava — vues à la demande</a></span><span class="arc-skill__desc">Progression sur un segment, récap « Points forts Strava » du rapport hebdo, matériel et zones (lecture seule)</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/garmin-sync-efficiency.md">Synchronisation Garmin</a></span><span class="arc-skill__desc">Récupération efficace des données Garmin sans saturer le contexte</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/weather-forecast.md">Météo</a></span><span class="arc-skill__desc">Prévisions météo pour le lieu d'entraînement</span></div>
 <div class="arc-skill"><span class="arc-skill__name"><a href="skills/session-parts-analyzer.md">Analyse de séances</a></span><span class="arc-skill__desc">Analyse de portions spécifiques d'une séance Garmin</span></div>
@@ -33,6 +35,7 @@ Les agents chargent les skills **à la demande** via l'outil `skill` de leur IDE
 - L'agent **coach** charge `weather-forecast` avant chaque validation hebdomadaire
 - L'agent **coach** charge `garmin-workout-scheduling` avant de pousser des séances dans Garmin
 - L'agent **coach** charge `session-load-spike` avant tout push de séance running/trail planifiée, et pour chaque séance nouvellement synchronisée par `garmin-daily-sync` (signal repris dans la notification)
+- L'agent **coach** tente `strava-highlights` après chaque séance synchronisée (silencieux si Strava est indisponible)
 - L'agent **course-strategist** charge `gpx-analysis` pour analyser un parcours
 
 ## Structure d'un skill
