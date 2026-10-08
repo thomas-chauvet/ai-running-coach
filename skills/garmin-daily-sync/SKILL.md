@@ -1,6 +1,6 @@
 ---
 name: garmin-daily-sync
-description: Use for the unattended (headless/cron) Garmin synchronisation — invoked as /garmin-daily-sync by scripts/daily-sync.sh, from the phone (Remote Control) or from the IDE. Orchestrates the coach agent + garmin-sync-efficiency to persist the last days of activities/sleep/HRV/readiness as Markdown, checks each newly persisted running/trail session for a session-load spike (session-load-spike skill, Nielsen et al. BJSM 2025;59(17):1203) and for Strava segment PRs (strava-highlights skill, TERTIARY, silent no-op if unavailable), then emits a short ```resume``` block for the notification (including any 🟠/🔴 spike alert and any Strava PR celebration). Never asks questions.
+description: Use for the unattended (headless/cron) Garmin synchronisation — invoked as /garmin-daily-sync by scripts/daily-sync.sh, from the phone (Remote Control or the Telegram chat) or from the IDE. Orchestrates the coach agent + garmin-sync-efficiency to persist the last days of activities/sleep/HRV/readiness as Markdown, checks each newly persisted running/trail session for a session-load spike (session-load-spike skill, Nielsen et al. BJSM 2025;59(17):1203) and for Strava segment PRs (strava-highlights skill, TERTIARY, silent no-op if unavailable), then emits a short ```resume``` block for the notification (including any 🟠/🔴 spike alert and any Strava PR celebration). Never asks questions.
 ---
 
 # Garmin Daily Sync — Skill (orchestration headless)
@@ -73,7 +73,7 @@ Remote Control) et l'IDE partagent. Il délègue tout à l'agent `coach` et au s
 
 Terminer la réponse par un bloc de code clôturé avec le langage `resume`, **5 lignes maximum**,
 dans la langue des documents, sans Markdown à l'intérieur. C'est ce bloc que
-`scripts/daily-sync.sh` extrait mot pour mot pour la notification push.
+`scripts/daily-sync.sh` extrait mot pour mot pour la notification push (Telegram).
 
 ````
 ```resume

@@ -2,8 +2,8 @@
 # =============================================================================
 # ai-running-coach — helpers partagés par les scripts (config TOML, logs)
 #
-# Sourcé par scripts/daily-sync.sh, scripts/notify.sh, scripts/setup-ntfy.sh,
-# scripts/coach-remote.sh. Lecture minimaliste de config/workspace.toml +
+# Sourcé par scripts/daily-sync.sh, scripts/notify.sh, scripts/setup-telegram.sh,
+# scripts/coach-remote.sh, scripts/coach-telegram.sh. Lecture minimaliste de config/workspace.toml +
 # config/workspace.user.toml (overrides), sans dépendance Python : suffisant
 # pour des clés `cle = "valeur"`, `cle = 12`, `cle = ["a", "b"]`.
 #
@@ -64,7 +64,7 @@ toml_get_file() {
     [[ -f "$file" ]] || return 1
     awk -v section="$section" -v key="$key" '
         # Retire un commentaire de fin de ligne, sans toucher aux « # » situés
-        # dans une chaîne : ntfy_topic = "run #42" doit rester intact.
+        # dans une chaîne : sujet = "run #42" doit rester intact.
         function strip_comment(s,   i, c, inq, out) {
             inq = 0; out = ""
             for (i = 1; i <= length(s); i++) {

@@ -12,7 +12,7 @@
 #   scripts/daily-sync.sh --runner codex
 #
 # Configuration : section [sync] de config/workspace.toml (runner, lookback_days)
-# et [notifications] (voir scripts/setup-ntfy.sh). S'exécute dans le workspace
+# et [notifications] (voir scripts/setup-telegram.sh). S'exécute dans le workspace
 # (ARC_WORKSPACE / ~/.config/ai-running-coach/workspace, sinon ce dépôt).
 # Journaux : <workspace>/logs/sync-YYYY-MM-DD.log (gitignoré). Verrou : logs/.sync.lock.
 # =============================================================================
@@ -45,7 +45,7 @@ NOTIFY="$ARC_ENGINE_ROOT/scripts/notify.sh"
 
 # Complète les liens vers le moteur dans le workspace (scripts/, et les
 # catalogues skills/agents sous .claude, .opencode, .github s'ils existent),
-# sans rien retirer ni toucher cron/systemd/ntfy — un simple `./install.sh`
+# sans rien retirer ni toucher cron/systemd/notifications — un simple `./install.sh`
 # complet est hors périmètre d'un run cron non surveillé. Nécessaire parce
 # qu'un skill ajouté au moteur (ex. workspace-data-contract le 23/09) reste
 # invisible du workspace tant que personne ne relance `./install.sh` à la

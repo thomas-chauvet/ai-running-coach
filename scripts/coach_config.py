@@ -14,6 +14,8 @@ Sous-commandes :
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
     set                 écrit une clé dans workspace.user.toml sans toucher au reste
+    unset               retire une clé de workspace.user.toml sans toucher au reste
+    merge-permissions   ajoute les règles allow/deny d'un modèle à un settings.json Claude Code
 """
 
 from __future__ import annotations
@@ -83,7 +85,8 @@ def write_json(path: Path, data: dict, backup: bool = True) -> None:
 # Le projet n'écrit qu'un sous-ensemble plat : sections, chaînes, booléens,
 # entiers, tableaux de chaînes. Plutôt qu'une dépendance, une écriture qui
 # PRÉSERVE le fichier ligne à ligne — commentaires, ordre et espacement compris.
-# C'est ce que `setup-ntfy.sh` faisait à coups d'awk, avec les dégâts connus.
+# C'est ce que l'ancien script de configuration des notifications faisait à
+# coups d'awk, avec les dégâts connus.
 
 SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 KEY_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*=")
@@ -233,6 +236,43 @@ def set_toml_key(path: Path, section: str, key: str, value) -> bool:
     return True
 
 
+def unset_toml_key(path: Path, section: str, key: str) -> bool:
+    """Retire `section.key` (tableau multi-ligne compris). Rend True si le fichier a changé."""
+    if not path.exists():
+        return False
+    lines = path.read_text(encoding="utf-8").splitlines()
+    current, index, changed = None, 0, False
+    while index < len(lines):
+        match = SECTION_RE.match(lines[index])
+        if match:
+            current = match.group(1)
+            index += 1
+            continue
+        key_match = KEY_RE.match(strip_toml_comment(lines[index]))
+        if current == section and key_match and key_match.group(1) == key:
+            end = index
+            if "[" in lines[index] and "]" not in strip_toml_comment(lines[index]):
+                while end + 1 < len(lines) and "]" not in strip_toml_comment(lines[end]):
+                    end += 1
+            del lines[index : end + 1]
+            changed = True
+            continue
+        index += 1
+    if not changed:
+        return False
+    shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".arc-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines).rstrip("\n") + "\n")
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return True
+
+
 def config_paths(workspace: Path) -> tuple:
     return workspace / "config/workspace.user.toml", workspace / "config/workspace.toml"
 
@@ -272,6 +312,13 @@ def cmd_set(args) -> int:
     return 0
 
 
+def cmd_unset(args) -> int:
+    user, _ = config_paths(Path(args.workspace))
+    changed = unset_toml_key(user, args.section, args.key)
+    print(f"{'retiré' if changed else 'absent'}: [{args.section}].{args.key} dans {user}")
+    return 0
+
+
 def cmd_merge_json(args) -> int:
     path = Path(args.file)
     data = read_json(path)
@@ -297,6 +344,35 @@ def cmd_merge_json(args) -> int:
     container[args.name] = value
     write_json(path, data)
     print(f"fusionné: {args.name} dans {path}")
+    return 0
+
+
+def cmd_merge_permissions(args) -> int:
+    """Union des listes permissions.allow / permissions.deny, sans rien retirer.
+
+    Les règles déjà présentes (ajoutées à la main ou par Claude Code lui-même
+    après un « toujours autoriser ») sont conservées, dans leur ordre.
+    """
+    path = Path(args.file)
+    template = read_json(Path(args.template)).get("permissions", {})
+    data = read_json(path)
+    permissions = data.setdefault("permissions", {})
+    if not isinstance(permissions, dict):
+        raise ConfigError(f"{path} : « permissions » n'est pas un objet JSON.")
+    added = 0
+    for kind in ("allow", "deny"):
+        current = permissions.setdefault(kind, [])
+        if not isinstance(current, list):
+            raise ConfigError(f"{path} : « permissions.{kind} » n'est pas une liste.")
+        for rule in template.get(kind, []):
+            if rule not in current:
+                current.append(rule)
+                added += 1
+    if not added:
+        print(f"inchangé: {path}")
+        return 0
+    write_json(path, data)
+    print(f"fusionné: {added} règle(s) dans {path}")
     return 0
 
 
@@ -365,6 +441,17 @@ def build_parser() -> argparse.ArgumentParser:
     setter.add_argument("--list", action="append", help="répéter pour un tableau de chaînes")
     setter.add_argument("--type", choices=("string", "bool", "int"), default="string")
     setter.set_defaults(func=cmd_set)
+
+    unsetter = sub.add_parser("unset", help="retire une clé de workspace.user.toml")
+    unsetter.add_argument("--workspace", default=".")
+    unsetter.add_argument("--section", required=True)
+    unsetter.add_argument("--key", required=True)
+    unsetter.set_defaults(func=cmd_unset)
+
+    perms = sub.add_parser("merge-permissions", help="fusionne des règles de permission Claude Code")
+    perms.add_argument("--file", required=True, help="settings.json / settings.local.json cible")
+    perms.add_argument("--template", required=True, help="JSON contenant permissions.allow/deny")
+    perms.set_defaults(func=cmd_merge_permissions)
 
     return parser
 

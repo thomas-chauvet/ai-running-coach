@@ -1,7 +1,7 @@
 """Palier A — scripts/coach_config.py (lecture/écriture TOML et JSON).
 
 L'écriture doit PRÉSERVER le fichier : c'est tout l'intérêt par rapport à l'awk
-de `setup-ntfy.sh`, qui reconstruisait le fichier et pouvait le perdre.
+de l'ancien `setup-ntfy.sh`, qui reconstruisait le fichier et pouvait le perdre.
 """
 
 from __future__ import annotations

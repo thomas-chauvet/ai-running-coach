@@ -16,7 +16,7 @@ Il **n'ajoute aucune logique** : il délègue à l'agent `coach` et au skill
 2. Ne récupère que les dates dont le fichier MD manque (`[sync].lookback_days`, défaut 2)
 3. Persiste `activities/` et `medical/` selon les conventions du workspace
 4. Termine par un bloc ```` ```resume ```` de 5 lignes maximum, extrait mot pour mot par
-   `scripts/daily-sync.sh` pour la notification push (ntfy)
+   `scripts/daily-sync.sh` pour la notification Telegram
 
 ## Fichier source
 

@@ -1,0 +1,47 @@
+{
+  "_comment": "Permissions de la session Telegram (scripts/coach-telegram.sh install), fusionnées dans <workspace>/.claude/settings.local.json. Le plugin Telegram ne relaie pas les demandes de permission : tout outil non pré-autorisé bloquerait la conversation. Les envois au calendrier Garmin sont autorisés ici, mais le skill telegram-chat exige un « OK » explicite dans le chat avant chaque envoi. Les suppressions restent interdites depuis Telegram.",
+  "permissions": {
+    "allow": [
+      "mcp__plugin_telegram_telegram",
+      "Read",
+      "Read(~/.claude/channels/telegram/inbox/**)",
+      "Glob",
+      "Grep",
+      "Write",
+      "Edit",
+      "Agent",
+      "Task",
+      "Skill",
+      "Bash(python3:*)",
+      "WebFetch(domain:wttr.in)",
+      "mcp__claude_ai_Strava",
+      "mcp__garmin__get_activities",
+      "mcp__garmin__get_activities_by_date",
+      "mcp__garmin__get_activity",
+      "mcp__garmin__get_activity_fit_data",
+      "mcp__garmin__get_activity_split_summaries",
+      "mcp__garmin__get_activity_splits",
+      "mcp__garmin__get_activity_typed_splits",
+      "mcp__garmin__get_calendar_events",
+      "mcp__garmin__get_courses",
+      "mcp__garmin__get_hrv_data",
+      "mcp__garmin__get_rhr_day",
+      "mcp__garmin__get_scheduled_workouts",
+      "mcp__garmin__get_sleep_data",
+      "mcp__garmin__get_training_readiness",
+      "mcp__garmin__get_workout_by_id",
+      "mcp__garmin__get_workouts",
+      "mcp__garmin__download_activity_file",
+      "mcp__garmin__schedule_workouts",
+      "mcp__garmin__schedule_week",
+      "mcp__garmin__upload_workout",
+      "mcp__garmin__upload_course",
+      "mcp__garmin__create_strength_workout"
+    ],
+    "deny": [
+      "mcp__garmin__delete_workout",
+      "mcp__garmin__unschedule_workout",
+      "mcp__garmin__unschedule_workouts"
+    ]
+  }
+}

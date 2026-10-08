@@ -16,7 +16,7 @@ le reste du projet (voir `CONTRIBUTING.md`).
 
 ## Palier A — intégration de l'installation
 
-Lance réellement `install.sh`, `setup-ntfy.sh` et `coach-remote.sh`, puis vérifie
+Lance réellement `install.sh`, `setup-telegram.sh`, `notify.sh`, `coach-telegram.sh` et `coach-remote.sh`, puis vérifie
 ce qui a été écrit sur le disque.
 
 `install.sh` écrit dans `$HOME/.config`, `$HOME/.claude.json`,

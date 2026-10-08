@@ -14,7 +14,8 @@
 #      voir docs/workspace.md
 #   6. (Optionnel) Machine « coach » toujours allumée : synchronisation Garmin
 #      automatique (--daily-sync) et coach accessible depuis le téléphone via
-#      Claude Code Remote Control (--remote-control) — voir docs/mobile.md
+#      Claude Code Remote Control (--remote-control) ou Telegram (--telegram)
+#      — voir docs/mobile.md
 #   7. Vérification finale
 #
 # Usage :
@@ -28,6 +29,8 @@
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
 #   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
+  ./install.sh --telegram         # chat avec le coach sur Telegram (Claude Code Channels)
+#   ./install.sh --telegram         # chat avec le coach sur Telegram (Claude Code Channels)
 #   ./install.sh --dry-run          # affiche les actions sans rien exécuter
 #   ./install.sh --help
 #
@@ -86,6 +89,7 @@ USE_LEANPROXY=0    # mode passerelle (power user) — défaut : direct
 DAILY_SYNC=0       # cron/launchd de synchronisation Garmin automatique
 WORKSPACE_ARG=""   # --workspace DIR (défaut : le dossier du projet)
 REMOTE_CONTROL=0   # service Claude Code Remote Control (accès mobile)
+TELEGRAM=0         # session Claude Code Channels permanente (chat Telegram)
 AGENTS_ARG=""      # --agents coach,medical,… (défaut : la config, sinon tous)
 ENABLED_AGENTS=""  # résolu par resolve_agents()
 
@@ -103,6 +107,7 @@ Usage :
   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
+  ./install.sh --telegram         # chat avec le coach sur Telegram (Claude Code Channels)
   ./install.sh --dry-run          # affiche les actions sans rien exécuter
   ./install.sh --help
 
@@ -129,6 +134,7 @@ while [[ $# -gt 0 ]]; do
         --no-medical) AGENTS_ARG="${AGENTS_ARG:-__all_but__}:medical"; shift ;;
         --daily-sync) DAILY_SYNC=1; shift ;;
         --remote-control) REMOTE_CONTROL=1; shift ;;
+        --telegram) TELEGRAM=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --help|-h) usage ;;
         *) die "Option inconnue : $1 (voir --help)" ;;
@@ -475,7 +481,7 @@ $marker
 /scripts
 /AGENTS.md
 /config/workspace.toml
-# Config personnelle : contient le sujet ntfy, qui fait office de secret
+# Config personnelle : contient l'ID Telegram et des chemins propres à la machine
 config/workspace.user.toml
 # Configs IDE générées
 /.mcp.json
@@ -915,7 +921,7 @@ check_runners() {
     if have claude; then
         ok "claude : présent ($(claude --version 2>/dev/null | head -1))"
     else
-        warn "claude absent — requis pour --remote-control et [sync].runner = \"claude\" :"
+        warn "claude absent — requis pour --remote-control, --telegram et [sync].runner = \"claude\" :"
         warn "  curl -fsSL https://claude.ai/install.sh | bash   (puis 'claude' → /login, compte claude.ai)"
     fi
     if have codex; then
@@ -1029,7 +1035,7 @@ EOF
             printf '%s' "$lines"
         fi
     fi
-    warn "Pensez à configurer la notification push : scripts/setup-ntfy.sh"
+    warn "Pensez à configurer la notification push : scripts/setup-telegram.sh"
 }
 
 # ---------------------------------------------------------------------------
@@ -1044,6 +1050,25 @@ install_remote_control() {
         ARC_WORKSPACE="$WORKSPACE_ROOT" ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-remote.sh" install --dry-run
     else
         ARC_WORKSPACE="$WORKSPACE_ROOT" "$PROJECT_ROOT/scripts/coach-remote.sh" install
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# 6f. Telegram — discuter avec le coach (Claude Code Channels)
+# ---------------------------------------------------------------------------
+# Non fatal : l'appairage du bot se fait à la main, au premier plan
+# (scripts/coach-telegram.sh run --pairing) — le reste de l'installation ne
+# doit pas échouer parce qu'il n'a pas encore eu lieu.
+install_telegram() {
+    if [[ "$TELEGRAM" -eq 0 ]]; then
+        return 0
+    fi
+    log "Session Telegram du coach (scripts/coach-telegram.sh install)"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        ARC_WORKSPACE="$WORKSPACE_ROOT" ARC_DRY_RUN=1 "$PROJECT_ROOT/scripts/coach-telegram.sh" install --dry-run \
+            || warn "Telegram : prérequis manquants (voir ci-dessus et docs/mobile.md)."
+    elif ! ARC_WORKSPACE="$WORKSPACE_ROOT" "$PROJECT_ROOT/scripts/coach-telegram.sh" install; then
+        warn "Telegram non installé : terminez la mise en route (docs/mobile.md), puis scripts/coach-telegram.sh install."
     fi
 }
 
@@ -1110,11 +1135,12 @@ main() {
     create_workspace_dirs
     create_workspace_config
     persist_agents
-    if [[ "$DAILY_SYNC" -eq 1 || "$REMOTE_CONTROL" -eq 1 ]]; then
+    if [[ "$DAILY_SYNC" -eq 1 || "$REMOTE_CONTROL" -eq 1 || "$TELEGRAM" -eq 1 ]]; then
         check_runners
     fi
     install_daily_sync
     install_remote_control
+    install_telegram
     verify
 }
 
