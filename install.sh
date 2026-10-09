@@ -29,7 +29,6 @@
 #   ./install.sh --use-leanproxy    # mode passerelle leanproxy (power user)
 #   ./install.sh --daily-sync       # cron/launchd : sync Garmin aux heures de [sync].times
 #   ./install.sh --remote-control   # service Remote Control (le coach dans la poche)
-  ./install.sh --telegram         # chat avec le coach sur Telegram (Claude Code Channels)
 #   ./install.sh --telegram         # chat avec le coach sur Telegram (Claude Code Channels)
 #   ./install.sh --dry-run          # affiche les actions sans rien exécuter
 #   ./install.sh --help
