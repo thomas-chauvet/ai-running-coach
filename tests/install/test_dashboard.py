@@ -170,7 +170,8 @@ config/workspace.user.toml
             (ws / ".gitignore").write_text("mes-notes/\n" + self.OLD_BLOCK)
             self.assertSucceeded(sb.install("--no-auth", "--workspace", str(ws)))
             lines = (ws / ".gitignore").read_text().splitlines()
-            for entry in ("/.arc/", "/scripts/", "/.opencode/"):
+            # /scripts sans slash final : c'est un lien, cf. WORKSPACE_IGNORES.
+            for entry in ("/.arc/", "/scripts", "/.opencode/"):
                 self.assertEqual(lines.count(entry), 1, f"{entry} absent ou en double")
             self.assertIn("mes-notes/", lines, "une ligne de l'utilisateur a disparu")
             end = lines.index("# fin du bloc ai-running-coach")
