@@ -51,6 +51,7 @@ Lors de la première installation, le script lance l'authentification Garmin Con
 | `--workspace DIR` | Données et configs IDE dans `DIR` (votre dépôt privé), moteur lié — voir [Votre workspace privé](workspace.md) |
 | `--daily-sync` | Synchronisation Garmin automatique (cron/launchd) + notification — voir [Le coach dans la poche](mobile.md) |
 | `--remote-control` | Service Claude Code Remote Control : le coach depuis le téléphone — voir [Le coach dans la poche](mobile.md) |
+| `--telegram` | Le coach sur Telegram (Claude Code Channels), session permanente — voir [Le coach dans la poche](mobile.md#3-le-coach-sur-telegram-chat-notifications) |
 | `--dry-run` | Affiche les actions sans rien exécuter |
 | `--help` | Affiche l'aide |
 

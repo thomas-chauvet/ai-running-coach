@@ -194,7 +194,7 @@ class Sandbox:
         """Comme `run`, mais avec un vrai terminal.
 
         Nécessaire pour tout ce que les scripts gardent derrière `[[ -t 0 ]]` :
-        `setup-ntfy.sh` et `coach-remote.sh` prennent une branche entièrement
+        `setup-telegram.sh` et `coach-remote.sh` prennent une branche entièrement
         différente hors terminal, et c'est la branche interactive qui casse.
         """
         master, slave = pty.openpty()

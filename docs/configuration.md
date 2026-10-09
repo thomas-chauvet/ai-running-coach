@@ -144,7 +144,7 @@ essayés. L'adresse d'écoute, elle, n'est pas réglable : `127.0.0.1` uniquemen
 
 ## Langue, notifications, synchronisation
 
-`[language]`, `[notifications]` et `[sync]` sont décrits dans
+`[language]`, `[notifications]`, `[telegram]` et `[sync]` sont décrits dans
 [Votre workspace privé](workspace.md) et [Le coach dans la poche](mobile.md).
 
 ## Vérifier

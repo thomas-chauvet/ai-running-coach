@@ -57,8 +57,8 @@ cd ~/ai-running-coach
 ```
 
 Le chemin du workspace est mémorisé dans `~/.config/ai-running-coach/workspace` : les
-scripts (`daily-sync.sh`, `coach-remote.sh`, `setup-ntfy.sh`) l'utilisent automatiquement
-(variable `ARC_WORKSPACE` pour forcer). Les options `--daily-sync` et `--remote-control`
+scripts (`daily-sync.sh`, `coach-remote.sh`, `coach-telegram.sh`, `setup-telegram.sh`) l'utilisent automatiquement
+(variable `ARC_WORKSPACE` pour forcer). Les options `--daily-sync`, `--remote-control` et `--telegram`
 (voir [Le coach dans la poche](mobile.md)) s'appliquent au workspace.
 
 Ouvrez ensuite votre IDE **dans `~/mon-workspace`**.
@@ -113,7 +113,7 @@ redémarrés : ils lisent les skills à chaque session.
 ## Ce qui reste hors des deux dépôts
 
 - `~/.garminconnect/` — tokens Garmin
-- `~/.config/ai-running-coach/ntfy.token` — token de notification
+- `~/.claude/channels/telegram/` — token et accès du bot Telegram (plugin Channels)
 - `~/.config/ai-running-coach/workspace` — chemin du workspace
 - `~/.claude.json` — approbation du serveur MCP pour le workspace
 
