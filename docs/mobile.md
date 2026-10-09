@@ -174,7 +174,7 @@ arrêtée).
 
 ```bash
 scripts/coach-telegram.sh status      # session active ? politique d'accès du bot ?
-tmux attach -t coach-telegram         # voir la session (détacher : Ctrl-b d)
+tmux -L coach-telegram attach -t coach-telegram         # voir la session (détacher : Ctrl-b d)
 scripts/coach-telegram.sh restart
 scripts/coach-telegram.sh uninstall
 ```
@@ -302,7 +302,7 @@ datacenter (à valider une fois). C'est pourquoi la machine coach reste le choix
 | `❌ Sync Garmin échouée` | Voir `logs/sync-YYYY-MM-DD.log`. Cause fréquente : tokens Garmin expirés → `uv run garmin-mcp-auth`. |
 | Pas de notification | `scripts/notify.sh "test"` ; vérifiez `provider = "telegram"`, le token (`~/.claude/channels/telegram/.env`) et `telegram_chat_id` (ou un compte appairé dans `access.json`). Écrivez au moins une fois au bot : il ne peut pas initier une conversation. |
 | `ntfy n'est plus pris en charge` | Ancienne configuration : `scripts/setup-telegram.sh`. |
-| Le bot ne répond pas | `scripts/coach-telegram.sh status`. Session absente → `restart`. Session présente → `tmux attach -t coach-telegram` : une demande de permission ou une erreur de plugin attend peut-être. |
+| Le bot ne répond pas | `scripts/coach-telegram.sh status`. Session absente → `restart`. Session présente → `tmux -L coach-telegram attach -t coach-telegram` : une demande de permission ou une erreur de plugin attend peut-être. |
 | Le bot ne répond qu'à l'appairage | Politique restée en `pairing` : `/telegram:access policy allowlist` dans la session. |
 | Sur Linux, le service meurt à la déconnexion SSH | `loginctl enable-linger $USER` (fait par `install`). |
 | Le portable et la machine coach ont chacun un workspace | Gardez une seule source de vérité (la machine coach) et travaillez dessus en Remote-SSH ; sinon synchronisez les dossiers avec `rsync`. |

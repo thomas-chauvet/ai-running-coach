@@ -81,10 +81,11 @@ fi
 [[ -n "$CHAT_ID" ]] || die "telegram_chat_id inconnu — appairez le bot (/telegram:access pair) ou lancez scripts/setup-telegram.sh"
 
 html_escape() {
-    local s="$1"
-    # Remplacements entre guillemets : depuis bash 5.2 (patsub_replacement), un
-    # « & » nu y désigne le texte trouvé.
-    s="${s//&/"&amp;"}"; s="${s//</"&lt;"}"; s="${s//>/"&gt;"}"
+    local s="$1" amp='&amp;' lt='&lt;' gt='&gt;'
+    # Depuis bash 5.2 (patsub_replacement), un « & » non protégé du remplacement
+    # désigne le texte trouvé, même venu d'une variable : d'où "$amp". Et pas de
+    # guillemets autour de ${…} : bash 3.2 (macOS) garderait ceux de "$amp".
+    s=${s//&/"$amp"}; s=${s//</"$lt"}; s=${s//>/"$gt"}
     printf '%s' "$s"
 }
 

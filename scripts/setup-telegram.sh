@@ -57,7 +57,10 @@ if [[ -n "$TOKEN_FILE" ]]; then
     TOKEN_FILE_EXPANDED="$(expand_path "$TOKEN_FILE")"
     [[ -f "$TOKEN_FILE_EXPANDED" ]] || die "Fichier token introuvable : $TOKEN_FILE_EXPANDED"
     chmod 600 "$TOKEN_FILE_EXPANDED" 2>/dev/null || true
-    TOKEN_FILE="${TOKEN_FILE_EXPANDED/#$HOME/\~}"   # forme ~ : portable entre machines
+    # Forme ~ : portable entre machines. Pas de ${x/#$HOME/\~} : bash 3.2
+    # (macOS) garde le backslash, et notify.sh ne développerait plus le chemin.
+    TOKEN_FILE="$TOKEN_FILE_EXPANDED"
+    [[ "$TOKEN_FILE" == "$HOME"/* ]] && TOKEN_FILE="~${TOKEN_FILE#"$HOME"}"
 elif [[ -z "${TELEGRAM_BOT_TOKEN:-}" && ! -f "$TG_DIR/.env" ]]; then
     die "Token du bot introuvable ($TG_DIR/.env).
   1. Telegram → @BotFather → /newbot → copiez le token

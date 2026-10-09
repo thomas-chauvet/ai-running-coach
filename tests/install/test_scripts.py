@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import unittest
 from pathlib import Path
 
 from tests.lib.asserts import InstallAsserts
@@ -20,6 +22,18 @@ def _telegram_state(sb: Sandbox, allow_from=("4242",), policy="allowlist", token
             json.dumps({"dmPolicy": policy, "allowFrom": list(allow_from)})
         )
     return state
+
+
+def _bash32() -> str | None:
+    """/bin/bash s'il est en 3.x (macOS) : le bash du PATH masquerait ses écarts."""
+    try:
+        out = subprocess.run(["/bin/bash", "-c", "echo $BASH_VERSION"], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    return "/bin/bash" if out.startswith("3.") else None
+
+
+BASH32 = _bash32()
 
 
 # Un token présent dans l'environnement du contributeur fausserait les cas « sans token ».
@@ -87,6 +101,16 @@ class TestSetupTelegram(InstallAsserts):
             self.assertEqual(text.count("[notifications]"), 1, text)
             self.assertEqual(text.count("telegram_chat_id"), 1, text)
 
+    @unittest.skipUnless(BASH32, "pas de /bin/bash 3.x")
+    def test_token_file_is_stored_with_a_plain_tilde_on_bash32(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            (sb.home / "tok.env").write_text("TELEGRAM_BOT_TOKEN=123:secret\n")
+            proc = sb.run([BASH32, str(sb.repo / "scripts/setup-telegram.sh"),
+                           "--token-file", str(sb.home / "tok.env"), "--no-test"], **NO_ENV_TOKEN)
+            self.assertSucceeded(proc)
+            self.assertFileContains(sb.repo / "config/workspace.user.toml", 'telegram_token_file = "~/tok.env"')
+
     def test_disable(self):
         with Sandbox() as sb:
             self.assertSucceeded(sb.script("setup-telegram.sh", "--disable", **NO_ENV_TOKEN))
@@ -119,6 +143,15 @@ class TestNotifyTelegram(InstallAsserts):
             self.assertIn("a &amp; b &gt; c", args)
             self.assertIn("disable_notification=false", args)
             self.assertNotIn("123:secret", proc.stdout + proc.stderr, "token affiché")
+
+    @unittest.skipUnless(BASH32, "pas de /bin/bash 3.x")
+    def test_escaping_on_bash32(self):
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            self._configure(sb)
+            proc = sb.run([BASH32, str(sb.repo / "scripts/notify.sh"), "a & b < c"], **NO_ENV_TOKEN)
+            self.assertSucceeded(proc)
+            self.assertIn("a &amp; b &lt; c", self._curl_args(sb))
 
     def test_low_priority_is_silent_and_explicit_chat_id_wins(self):
         with Sandbox() as sb:
@@ -162,6 +195,15 @@ class TestCoachTelegram(InstallAsserts):
             proc = sb.script("coach-telegram.sh", "run", "--pairing", "--dry-run", **NO_ENV_TOKEN)
             self.assertSucceeded(proc)
             self.assertOutputContains(proc, "--channels plugin:telegram@claude-plugins-official")
+
+    def test_refuses_leanproxy_mode(self):
+        """mcp__leanproxy__* porterait aussi les suppressions interdites depuis Telegram."""
+        with Sandbox() as sb:
+            _telegram_state(sb)
+            (sb.repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"leanproxy": {"command": "x"}}}))
+            proc = sb.script("coach-telegram.sh", "run", "--dry-run", **NO_ENV_TOKEN)
+            self.assertFailed(proc, "mode leanproxy")
+            self.assertOutputContains(proc, "leanproxy")
 
     def test_install_merges_permissions_without_losing_existing_rules(self):
         with Sandbox() as sb:

@@ -46,6 +46,8 @@ PERMISSION_MODE="$(toml_get telegram permission_mode acceptEdits)"
 DAILY_RESTART="$(toml_get telegram daily_restart 03:30)"
 TG_DIR="${TELEGRAM_STATE_DIR:-$HOME/.claude/channels/telegram}"
 SELF="$ARC_ENGINE_ROOT/scripts/coach-telegram.sh"
+# Aussi le nom de la socket tmux (-L) : serveur dédié, sinon le restart systemd
+# (KillMode=control-group) tuerait toutes les sessions tmux de l'utilisateur.
 TMUX_SESSION="coach-telegram"
 SERVICE_NAME="ai-running-coach-telegram"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
@@ -113,6 +115,14 @@ preflight() {
     have claude && check_login
     [[ -n "${TELEGRAM_BOT_TOKEN:-}" || -f "$TG_DIR/.env" ]] \
         || die "Token du bot absent ($TG_DIR/.env). Dans Claude Code : /plugin install telegram@claude-plugins-official puis /telegram:configure <token>."
+    # Mode passerelle : un seul outil (mcp__leanproxy__…) porte lecture, envoi ET
+    # suppression. L'autoriser contournerait le deny des suppressions ; ne pas
+    # l'autoriser bloquerait la session sur une demande de permission que le
+    # plugin ne relaie pas. Pas de compromis sûr : refus.
+    if grep -qs '"leanproxy"[[:space:]]*:' "$ARC_WORKSPACE/.mcp.json"; then
+        die "Mode passerelle leanproxy détecté ($ARC_WORKSPACE/.mcp.json) : incompatible avec le coach sur Telegram.
+  Réinstallez en mode direct (./install.sh sans --use-leanproxy), ou utilisez Remote Control."
+    fi
     local policy
     policy="$(dm_policy)"
     if [[ "$policy" != "allowlist" && "$PAIRING" -eq 0 ]]; then
@@ -174,16 +184,16 @@ do_supervise() {
 }
 
 tmux_start() {
-    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
         ok "Session tmux $TMUX_SESSION déjà active."
         return 0
     fi
-    run tmux new-session -d -s "$TMUX_SESSION" -c "$ARC_WORKSPACE" "$SELF supervise"
+    run tmux -L "$TMUX_SESSION" new-session -d -s "$TMUX_SESSION" -c "$ARC_WORKSPACE" "$SELF supervise"
 }
 
 tmux_stop() {
-    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        run tmux kill-session -t "$TMUX_SESSION"
+    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        run tmux -L "$TMUX_SESSION" kill-session -t "$TMUX_SESSION"
     fi
 }
 
@@ -217,8 +227,8 @@ WorkingDirectory=$ARC_WORKSPACE
 Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$HOME
 Environment=ARC_WORKSPACE=$ARC_WORKSPACE
-ExecStart=$(command -v tmux) new-session -d -s $TMUX_SESSION -c $ARC_WORKSPACE $SELF supervise
-ExecStop=$(command -v tmux) kill-session -t $TMUX_SESSION
+ExecStart=$(command -v tmux) -L $TMUX_SESSION new-session -d -s $TMUX_SESSION -c $ARC_WORKSPACE $SELF supervise
+ExecStop=$(command -v tmux) -L $TMUX_SESSION kill-session -t $TMUX_SESSION
 RemainAfterExit=yes
 
 [Install]
@@ -356,7 +366,7 @@ do_start() {
         systemd) run systemctl --user start "$SERVICE_NAME" ;;
         launchd|tmux) tmux_start ;;
     esac
-    ok "Session Telegram démarrée (tmux attach -t $TMUX_SESSION pour la voir)."
+    ok "Session Telegram démarrée (tmux -L $TMUX_SESSION attach -t $TMUX_SESSION pour la voir)."
 }
 
 do_stop() {
@@ -373,8 +383,8 @@ do_status() {
     local chosen
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
     [[ "$chosen" == "systemd" ]] && { systemctl --user status "$SERVICE_NAME" --no-pager 2>/dev/null | head -n 5 || true; }
-    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        ok "tmux $TMUX_SESSION actif — tmux attach -t $TMUX_SESSION (détacher : Ctrl-b d)"
+    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        ok "tmux $TMUX_SESSION actif — tmux -L $TMUX_SESSION attach -t $TMUX_SESSION (détacher : Ctrl-b d)"
     else
         warn "Session tmux $TMUX_SESSION absente : le bot ne répond pas (les notifications partent quand même)."
     fi
@@ -382,8 +392,8 @@ do_status() {
 }
 
 do_logs() {
-    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        tmux capture-pane -p -t "$TMUX_SESSION" -S -50
+    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        tmux -L "$TMUX_SESSION" capture-pane -p -t "$TMUX_SESSION" -S -50
     elif [[ -f "$LOG_FILE" ]]; then
         tail -n 50 "$LOG_FILE"
     else
