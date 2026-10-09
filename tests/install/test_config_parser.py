@@ -57,11 +57,11 @@ class TestScalars(ConfigParserCase):
             self.assertEqual(self.read(sb, "toml_get a valeur", config), "de-a")
 
     def test_hash_inside_a_quoted_string_is_kept(self):
-        """`telegram_chat_id = "run #42"` ne doit pas être tronqué à « run »."""
+        """`ntfy_topic = "run #42"` ne doit pas être tronqué à « run »."""
         with Sandbox() as sb:
             self.assertEqual(
-                self.read(sb, "toml_get notifications telegram_chat_id",
-                          '[notifications]\ntelegram_chat_id = "run #42"\n'),
+                self.read(sb, "toml_get notifications ntfy_topic",
+                          '[notifications]\nntfy_topic = "run #42"\n'),
                 "run #42",
             )
 
@@ -86,17 +86,17 @@ class TestPrecedence(ConfigParserCase):
         """Une valeur vide explicite doit effacer l'héritage, pas être ignorée."""
         with Sandbox() as sb:
             self.assertEqual(
-                self.read(sb, "toml_get notifications telegram_token_file",
-                          '[notifications]\ntelegram_token_file = "~/.config/arc/telegram.env"\n',
-                          '[notifications]\ntelegram_token_file = ""\n'),
+                self.read(sb, "toml_get notifications ntfy_token_file",
+                          '[notifications]\nntfy_token_file = "~/.config/arc/ntfy.token"\n',
+                          '[notifications]\nntfy_token_file = ""\n'),
                 "",
             )
 
     def test_empty_configured_value_does_not_become_the_default(self):
         with Sandbox() as sb:
             self.assertEqual(
-                self.read(sb, "toml_get notifications telegram_chat_id defaut-code",
-                          '[notifications]\ntelegram_chat_id = ""\n'),
+                self.read(sb, "toml_get notifications ntfy_topic defaut-code",
+                          '[notifications]\nntfy_topic = ""\n'),
                 "",
             )
 
