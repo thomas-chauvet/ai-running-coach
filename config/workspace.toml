@@ -16,26 +16,17 @@ responses = "auto"
 
 [notifications]
 # Notification push envoyée après chaque synchronisation automatique
-# (scripts/daily-sync.sh → scripts/notify.sh), dans la conversation Telegram du
-# coach (même bot que le chat, voir [telegram]). Configurez-la avec
-# `scripts/setup-telegram.sh` (écrit les overrides dans workspace.user.toml).
-# Valeurs : "telegram" | "none".
+# (scripts/daily-sync.sh → scripts/notify.sh). Configurez-la avec
+# `scripts/setup-ntfy.sh` (écrit les overrides dans workspace.user.toml).
+# Valeurs : "ntfy" (appli gratuite iOS/Android, serveur public ou auto-hébergé) | "none".
 provider = "none"
-# Votre ID numérique Telegram. Vide : premier compte appairé du bot
-# (~/.claude/channels/telegram/access.json).
-telegram_chat_id = ""
-# Fichier contenant le token du bot. Vide : ~/.claude/channels/telegram/.env,
-# écrit par /telegram:configure. Jamais versionné.
-telegram_token_file = ""
-
-[telegram]
-# Chat avec le coach depuis Telegram (Claude Code Channels) : session permanente
-# gérée par `scripts/coach-telegram.sh install` (voir docs/mobile.md).
-# Mode de permission de la session. Les outils autorisés sont fusionnés depuis
-# templates/settings.telegram.json dans .claude/settings.local.json.
-permission_mode = "acceptEdits"
-# Heure locale du redémarrage quotidien (contexte neuf). "" pour désactiver.
-daily_restart = "03:30"
+# Serveur ntfy : public (https://ntfy.sh) ou auto-hébergé.
+ntfy_url = "https://ntfy.sh"
+# Sujet (topic) auquel votre téléphone est abonné — choisissez-le difficile à deviner.
+ntfy_topic = ""
+# Fichier contenant un token d'accès (serveur avec authentification) — optionnel.
+# Jamais versionné : à placer hors du dépôt, ex. "~/.config/ai-running-coach/ntfy.token".
+ntfy_token_file = ""
 
 # Alerte d'expiration des tokens Garmin (#32) : `scripts/daily-sync.sh` interroge
 # `coach_doctor.py --check garmin_token` avant chaque synchronisation. Sans effet
@@ -100,15 +91,6 @@ lookback_days = 2
 # À activer dans workspace.user.toml quand le workspace est votre dépôt privé
 # (voir docs/workspace.md). Le push exige un remote accessible sans mot de passe (clé SSH).
 git_autocommit = false
-
-[integrations]
-# Repérage automatique des PR de segments Strava (skill `strava-highlights`) après
-# chaque séance persistée par garmin-daily-sync — plié dans la ligne "Séances" de la
-# notification, jamais une alerte. Strava reste TERTIAIRE (voir AGENTS.md) : jamais
-# une source de persistance des données brutes d'activité. Se dégrade silencieusement
-# si le connecteur claude.ai Strava est indisponible, non autorisé, ou injoignable en
-# mode cron non interactif — aucun impact sur le sync Garmin lui-même.
-strava_highlights = true
 
 [athlete]
 # Profil de l'athlète : fichier Markdown libre, dans votre workspace, jamais
@@ -387,3 +369,21 @@ dem_trim_m = 500
 # [pacing.personal] — coefficients de pacing personnels (#188). Section ABSENTE par défaut :
 # écrite par `arc_race_debrief.py --calibrate --apply` après accord explicite de l'athlète,
 # dans config/workspace.user.toml (voir docs/configuration.md). Ne rien décommenter ici.
+
+[telegram_chat]
+# Chat libre avec le coach depuis Telegram (Claude Code Channels, plugin officiel) :
+# session permanente gérée par `scripts/coach-telegram-chat.sh install`. Distinct du bot
+# [telegram] ci-dessus (retours en un geste, sans modèle). Utiliser un bot différent
+# (ou ne pas activer le sondage du bot [telegram]) : un même token ne peut être lu
+# que par un seul consommateur.
+# Mode de permission de la session. Les outils autorisés sont fusionnés depuis
+# templates/settings.telegram.json dans .claude/settings.local.json.
+permission_mode = "acceptEdits"
+# Heure locale du redémarrage quotidien (contexte neuf). "" pour désactiver.
+daily_restart = "03:30"
+
+[integrations]
+# Repérage automatique des PR de segments Strava (skill `strava-highlights`) après
+# chaque séance persistée par garmin-daily-sync. TERTIAIRE, advisory : se dégrade
+# silencieusement si le connecteur claude.ai Strava est indisponible.
+strava_highlights = true

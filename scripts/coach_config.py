@@ -333,6 +333,35 @@ def cmd_merge_json(args) -> int:
     return 0
 
 
+def cmd_merge_permissions(args) -> int:
+    """Union des listes permissions.allow / permissions.deny, sans rien retirer.
+
+    Les règles déjà présentes (ajoutées à la main ou par Claude Code lui-même
+    après un « toujours autoriser ») sont conservées, dans leur ordre.
+    """
+    path = Path(args.file)
+    template = read_json(Path(args.template)).get("permissions", {})
+    data = read_json(path)
+    permissions = data.setdefault("permissions", {})
+    if not isinstance(permissions, dict):
+        raise ConfigError(f"{path} : « permissions » n'est pas un objet JSON.")
+    added = 0
+    for kind in ("allow", "deny"):
+        current = permissions.setdefault(kind, [])
+        if not isinstance(current, list):
+            raise ConfigError(f"{path} : « permissions.{kind} » n'est pas une liste.")
+        for rule in template.get(kind, []):
+            if rule not in current:
+                current.append(rule)
+                added += 1
+    if not added:
+        print(f"inchangé: {path}")
+        return 0
+    write_json(path, data)
+    print(f"fusionné: {added} règle(s) dans {path}")
+    return 0
+
+
 def cmd_remove_json_key(args) -> int:
     """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
@@ -454,6 +483,11 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--union-lists", action="store_true",
                        help="objet existant : ajoute les éléments manquants de ses listes au lieu de le remplacer")
     merge.set_defaults(func=cmd_merge_json)
+
+    perms = sub.add_parser("merge-permissions", help="fusionne des règles de permission Claude Code")
+    perms.add_argument("--file", required=True, help="settings.json / settings.local.json cible")
+    perms.add_argument("--template", required=True, help="JSON contenant permissions.allow/deny")
+    perms.set_defaults(func=cmd_merge_permissions)
 
     remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
     remove_key.add_argument("--file", required=True)
