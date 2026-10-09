@@ -21,7 +21,12 @@ Alternative gratuite et sans clé : Open-Meteo (`https://api.open-meteo.com/v1/f
 
 ```
 1. planning/Semaine_*.md → clé "location" du bloc ```arc du fichier semaine actif
-   (fichiers anciens sans bloc : champ "Lieu d'entraînement :")
+   (fichiers anciens sans bloc : champ "Lieu d'entraînement :"). Fichier PLAN
+   MULTI-SEMAINES (#69, clé "weeks" au lieu de "location" au premier niveau) :
+   prendre le "location" de l'entrée weeks[] dont le week_start (lundi à
+   dimanche) couvre la date visée — jamais le "location" d'une AUTRE semaine du
+   même fichier, deux semaines consécutives pouvant avoir des lieux différents
+   (semaine de voyage, stage en altitude…).
 2. planning/active_objective.md → "Lieu d'entraînement par défaut"
 3. planning/Runner_Profile.md → "Lieu par défaut"
 4. Si aucun des trois → question() à l'utilisateur (ne JAMAIS inventer)
@@ -73,8 +78,19 @@ Garder les autres champs en mémoire seulement si utile (visibilité, pression).
 
 - 🟠 Difficile → suggérer **réduction 10-20 % durée/intensité** + hydratation × 1.2.
 - 🔴 Dangereux → **reporter** la séance outdoor OU **basculer indoor** (home trainer, tapis, force à la salle).
+- Sol boueux/mouillé (pluie récente ou prévue) : donnée d'entrée de la suggestion de paire du `coach` (#132, `SHOE SUGGESTION MANDATE`, seulement à partir de 2 paires actives) — signaler « conditions humides » dans la section météo, la suggestion elle-même reste au `coach`.
 - Pluie modérée (🟡) → OK si matériel imperméable ; vent fort → allure GPS compromise, courir **au cardio** (pas au GPS).
 - Chaleur 🟠 + séance longue (> 90 min) → emporter ≥ 1L/h + électrolytes + casquette.
+
+## Cibles de séance ajustées à la chaleur (#171)
+
+Les seuils du tableau « Catégories & seuils » (température, vent, pluie, UV) sont repris par `scripts/arc_heat.py` (`WEATHER_*`) — **toute modification du tableau doit y être reportée** : un test du dépôt (palier B) échoue si les deux divergent. L'ajustement des cibles d'entraînement est **déterministe, dans le script**, jamais dans le prompt. Pour une séance de course à pied en extérieur un jour chaud (> 25 °C) ou 🔴 : `python3 scripts/arc_workout_targets.py targets --heat --session …` (lit ce fichier météo du jour). Il renvoie `heat_adjustment` (facteur sur l'allure, action, motif, rappels hydratation/sodium reliés au taux de sudation) :
+
+- endurance / sortie longue : durée conservée, **allure** ralentie, **FC inchangée** ;
+- qualité / allure course : créneau frais d'abord (cette section), sinon allures abaissées ou séance déplacée ; **jamais d'intensité maintenue en 🔴** ;
+- la température retenue est `temp_min_c` pour le créneau `morning`, `temp_max_c` sinon (le bloc n'a pas de température horaire) ; `feels_like_c` la remplace s'il est plus élevé (sauf au créneau `morning` : le ressenti du fichier est journalier) ; `humidity_pct` absent → repli sur la température seule, dit dans `notes`.
+
+Citer le motif (`reason`) dans le rapport ; les mêmes coefficients que le pacing de course (`ASSUMPTIONS["heat"]`, source unique `scripts/arc_heat.py`).
 
 ## Persistance — `medical/YYYY-MM-DD_meteo.md`
 
@@ -107,6 +123,10 @@ Garder les autres champs en mémoire seulement si utile (visibilité, pression).
 ```
 
 **Ne PAS refetcher** un jour qui a déjà son fichier < 24 h (règle d'idempotence).
+
+## Contexte du cycle (opt-in, #166) — chaleur et hydratation
+
+**Seulement si** `[health].cycle_tracking` n'est pas `off` (défaut `off` ; absent, vide ou invalide = `off`) **et** qu'une `cycle_phase` est enregistrée pour le jour dans `medical/YYYY-MM-DD_health.md` : en phase lutéale, une séance 🟡/🟠 par temps chaud peut être ressentie comme plus difficile — ajoutez au plus UNE ligne de contexte à la section météo (« chaleur : prévoir hydratation et électrolytes plutôt généreux »). Jamais une catégorie recalculée, jamais un seuil modifié, jamais un diagnostic. À `off`, ou sans phase enregistrée : aucune mention.
 
 ## Workflow coach (référence)
 

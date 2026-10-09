@@ -14,13 +14,12 @@ Sous-commandes :
     approve-claude-mcp  pré-approuve un serveur MCP de projet dans ~/.claude.json
     get                 lit une clé TOML (user.toml > workspace.toml > défaut)
     set                 écrit une clé dans workspace.user.toml sans toucher au reste
-    unset               retire une clé de workspace.user.toml sans toucher au reste
-    merge-permissions   ajoute les règles allow/deny d'un modèle à un settings.json Claude Code
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -85,8 +84,7 @@ def write_json(path: Path, data: dict, backup: bool = True) -> None:
 # Le projet n'écrit qu'un sous-ensemble plat : sections, chaînes, booléens,
 # entiers, tableaux de chaînes. Plutôt qu'une dépendance, une écriture qui
 # PRÉSERVE le fichier ligne à ligne — commentaires, ordre et espacement compris.
-# C'est ce que l'ancien script de configuration des notifications faisait à
-# coups d'awk, avec les dégâts connus.
+# C'est ce que `setup-ntfy.sh` faisait à coups d'awk, avec les dégâts connus.
 
 SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 KEY_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*=")
@@ -97,6 +95,8 @@ def toml_encode(value) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, float):
+        return repr(value)
     if isinstance(value, list):
         return "[" + ", ".join(toml_encode(v) for v in value) + "]"
     escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
@@ -151,13 +151,30 @@ def _read_toml_fallback(text: str) -> dict:
 def _parse_scalar(value: str):
     value = value.strip()
     if value.startswith("[") and value.endswith("]"):
-        inner = value[1:-1].strip()
-        return [v.strip().strip('"') for v in inner.split(",") if v.strip()] if inner else []
+        return _parse_array(value)
     if value in ("true", "false"):
         return value == "true"
     if re.fullmatch(r"-?\d+", value):
         return int(value)
+    if re.fullmatch(r"-?\d+\.\d+", value):
+        return float(value)
     return value.strip('"')
+
+
+def _parse_array(value: str) -> list:
+    """Analyse une valeur TOML `[...]` de chaînes.
+
+    Un `split(",")` naïf coupe une chaîne contenant elle-même une virgule
+    (ex. les libellés multi-clauses de `config/setup-questions.toml`) —
+    `ast.literal_eval` respecte les guillemets, la syntaxe liste Python étant
+    un sur-ensemble compatible pour ce sous-jeu (chaînes entre guillemets
+    doubles, séparées par des virgules).
+    """
+    try:
+        return list(ast.literal_eval(value))
+    except (ValueError, SyntaxError):
+        inner = value[1:-1].strip()
+        return [v.strip().strip('"') for v in inner.split(",") if v.strip()] if inner else []
 
 
 def strip_toml_comment(line: str) -> str:
@@ -236,43 +253,6 @@ def set_toml_key(path: Path, section: str, key: str, value) -> bool:
     return True
 
 
-def unset_toml_key(path: Path, section: str, key: str) -> bool:
-    """Retire `section.key` (tableau multi-ligne compris). Rend True si le fichier a changé."""
-    if not path.exists():
-        return False
-    lines = path.read_text(encoding="utf-8").splitlines()
-    current, index, changed = None, 0, False
-    while index < len(lines):
-        match = SECTION_RE.match(lines[index])
-        if match:
-            current = match.group(1)
-            index += 1
-            continue
-        key_match = KEY_RE.match(strip_toml_comment(lines[index]))
-        if current == section and key_match and key_match.group(1) == key:
-            end = index
-            if "[" in lines[index] and "]" not in strip_toml_comment(lines[index]):
-                while end + 1 < len(lines) and "]" not in strip_toml_comment(lines[end]):
-                    end += 1
-            del lines[index : end + 1]
-            changed = True
-            continue
-        index += 1
-    if not changed:
-        return False
-    shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".arc-", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(lines).rstrip("\n") + "\n")
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-    return True
-
-
 def config_paths(workspace: Path) -> tuple:
     return workspace / "config/workspace.user.toml", workspace / "config/workspace.toml"
 
@@ -305,17 +285,12 @@ def cmd_set(args) -> int:
         value = args.value.lower() in ("1", "true", "oui", "yes")
     elif args.type == "int":
         value = int(args.value)
+    elif args.type == "float":
+        value = float(args.value)
     else:
         value = args.value
     changed = set_toml_key(user, args.section, args.key, value)
     print(f"{'écrit' if changed else 'inchangé'}: [{args.section}].{args.key} dans {user}")
-    return 0
-
-
-def cmd_unset(args) -> int:
-    user, _ = config_paths(Path(args.workspace))
-    changed = unset_toml_key(user, args.section, args.key)
-    print(f"{'retiré' if changed else 'absent'}: [{args.section}].{args.key} dans {user}")
     return 0
 
 
@@ -337,7 +312,18 @@ def cmd_merge_json(args) -> int:
         container = nxt
 
     value = json.loads(args.value)
-    if container.get(args.name) == value:
+    current = container.get(args.name)
+    if args.union_lists and isinstance(current, dict) and isinstance(value, dict):
+        # Fusion par listes (ex. permissions allow/deny de .cursor/cli.json) : les
+        # entrées déjà présentes, dont celles ajoutées par l'utilisateur, sont gardées.
+        merged = dict(current)
+        for key, items in value.items():
+            if isinstance(items, list) and isinstance(merged.get(key), list):
+                merged[key] = merged[key] + [i for i in items if i not in merged[key]]
+            elif key not in merged:
+                merged[key] = items
+        value = merged
+    if current == value:
         print(f"inchangé: {path} ({args.name})")
         return 0
 
@@ -347,32 +333,55 @@ def cmd_merge_json(args) -> int:
     return 0
 
 
-def cmd_merge_permissions(args) -> int:
-    """Union des listes permissions.allow / permissions.deny, sans rien retirer.
+def cmd_remove_json_key(args) -> int:
+    """Retire une clé d'un fichier JSON si elle existe — sans effet sinon.
 
-    Les règles déjà présentes (ajoutées à la main ou par Claude Code lui-même
-    après un « toujours autoriser ») sont conservées, dans leur ordre.
+    Utilisé par `install.sh` pour nettoyer l'entrée MCP de l'ancienne source
+    de données (garmin/intervals/strava, #68, #164) quand `--source` bascule RÉELLEMENT
+    (jamais sur un simple rerun, voir `SOURCE_CHANGED` dans `install.sh`) :
+    sans cela, un IDE se retrouve avec les deux serveurs déclarés après un
+    changement de source, dont un qui ne répond plus.
+
+    `--expect-command` (optionnel, revue PR #116) : ne retire l'entrée QUE si
+    sa valeur `command` correspond exactement (chaîne, ou premier élément
+    d'une liste — format OpenCode). Sans ce garde-fou, un serveur MCP AJOUTÉ À
+    LA MAIN par l'utilisateur (ex. un athlète Garmin qui a suivi
+    `docs/faq.md` pour ajouter Intervals.icu en secondaire, avec
+    `"command": "uv"`) serait supprimé au même titre qu'une entrée écrite par
+    `install.sh` — une régression constatée en revue.
     """
     path = Path(args.file)
-    template = read_json(Path(args.template)).get("permissions", {})
-    data = read_json(path)
-    permissions = data.setdefault("permissions", {})
-    if not isinstance(permissions, dict):
-        raise ConfigError(f"{path} : « permissions » n'est pas un objet JSON.")
-    added = 0
-    for kind in ("allow", "deny"):
-        current = permissions.setdefault(kind, [])
-        if not isinstance(current, list):
-            raise ConfigError(f"{path} : « permissions.{kind} » n'est pas une liste.")
-        for rule in template.get(kind, []):
-            if rule not in current:
-                current.append(rule)
-                added += 1
-    if not added:
-        print(f"inchangé: {path}")
+    if not path.exists():
+        print(f"inchangé: {path} (absent)")
         return 0
+    data = read_json(path)
+
+    container = data
+    for part in args.section.split(".") if args.section else []:
+        nxt = container.get(part)
+        if not isinstance(nxt, dict):
+            print(f"inchangé: {path} ({args.section} absent ou non-objet)")
+            return 0
+        container = nxt
+
+    if args.name not in container:
+        print(f"inchangé: {path} ({args.name} absent)")
+        return 0
+
+    expected = getattr(args, "expect_command", None)
+    if expected:
+        value = container[args.name]
+        actual = value.get("command") if isinstance(value, dict) else None
+        if isinstance(actual, list):
+            actual = actual[0] if actual else None
+        if actual != expected:
+            print(f"inchangé: {path} ({args.name} : « command » = {actual!r}, "
+                  f"attendu {expected!r} — conservé, probablement ajouté à la main)")
+            return 0
+
+    del container[args.name]
     write_json(path, data)
-    print(f"fusionné: {added} règle(s) dans {path}")
+    print(f"retiré: {args.name} de {path}")
     return 0
 
 
@@ -407,6 +416,31 @@ def cmd_approve_claude_mcp(args) -> int:
     return 0
 
 
+def cmd_unapprove_claude_mcp(args) -> int:
+    """Retire un serveur MCP de `enabledMcpjsonServers` pour ce projet (#68).
+
+    Ne touche jamais `hasTrustDialogAccepted` : désapprouver un serveur ne
+    doit pas redemander la confiance du dossier entier.
+    """
+    store = Path(args.store)
+    if not store.exists():
+        print(f"inchangé: {store} (absent)")
+        return 0
+    data = read_json(store)
+    project = data.get("projects", {}).get(args.project)
+    if not project:
+        print(f"inchangé: {store} ({args.project} absent)")
+        return 0
+    enabled = project.get("enabledMcpjsonServers")
+    if not enabled or args.server not in enabled:
+        print(f"inchangé: {store} ({args.server} déjà absent)")
+        return 0
+    enabled.remove(args.server)
+    write_json(store, data)
+    print(f"retiré: serveur MCP {args.server} désapprouvé pour {args.project}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="coach_config.py", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -417,7 +451,17 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("--name", required=True, help="clé à insérer dans la section")
     merge.add_argument("--value", required=True, help="valeur JSON")
     merge.add_argument("--template", default="", help="contenu JSON initial si le fichier est absent")
+    merge.add_argument("--union-lists", action="store_true",
+                       help="objet existant : ajoute les éléments manquants de ses listes au lieu de le remplacer")
     merge.set_defaults(func=cmd_merge_json)
+
+    remove_key = sub.add_parser("remove-json-key", help="retire une clé d'un fichier JSON si présente")
+    remove_key.add_argument("--file", required=True)
+    remove_key.add_argument("--section", default="", help="chemin pointé, ex. « mcpServers » ou « a.b »")
+    remove_key.add_argument("--name", required=True, help="clé à retirer de la section")
+    remove_key.add_argument("--expect-command", default="",
+                             help="ne retire que si value['command'] (ou son 1er élément) correspond exactement")
+    remove_key.set_defaults(func=cmd_remove_json_key)
 
     approve = sub.add_parser("approve-claude-mcp", help="pré-approuve un serveur MCP de projet")
     approve.add_argument("--store", required=True)
@@ -425,6 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--server", required=True)
     approve.add_argument("--trust", action="store_true", help="accepte aussi le dialogue de confiance")
     approve.set_defaults(func=cmd_approve_claude_mcp)
+
+    unapprove = sub.add_parser("unapprove-claude-mcp", help="retire un serveur MCP de projet des serveurs approuvés")
+    unapprove.add_argument("--store", required=True)
+    unapprove.add_argument("--project", required=True)
+    unapprove.add_argument("--server", required=True)
+    unapprove.set_defaults(func=cmd_unapprove_claude_mcp)
 
     get = sub.add_parser("get", help="lit une clé TOML avec la précédence du projet")
     get.add_argument("--workspace", default=".")
@@ -439,19 +489,8 @@ def build_parser() -> argparse.ArgumentParser:
     setter.add_argument("--key", required=True)
     setter.add_argument("--value", default="")
     setter.add_argument("--list", action="append", help="répéter pour un tableau de chaînes")
-    setter.add_argument("--type", choices=("string", "bool", "int"), default="string")
+    setter.add_argument("--type", choices=("string", "bool", "int", "float"), default="string")
     setter.set_defaults(func=cmd_set)
-
-    unsetter = sub.add_parser("unset", help="retire une clé de workspace.user.toml")
-    unsetter.add_argument("--workspace", default=".")
-    unsetter.add_argument("--section", required=True)
-    unsetter.add_argument("--key", required=True)
-    unsetter.set_defaults(func=cmd_unset)
-
-    perms = sub.add_parser("merge-permissions", help="fusionne des règles de permission Claude Code")
-    perms.add_argument("--file", required=True, help="settings.json / settings.local.json cible")
-    perms.add_argument("--template", required=True, help="JSON contenant permissions.allow/deny")
-    perms.set_defaults(func=cmd_merge_permissions)
 
     return parser
 

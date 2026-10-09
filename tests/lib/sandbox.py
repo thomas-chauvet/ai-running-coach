@@ -46,12 +46,39 @@ COPIED = [
     "web",
 ]
 
+# Fichiers personnels gitignorés (p. ex. `config/workspace.user.toml`) : jamais
+# recopiés, sinon la configuration du contributeur fuit dans les tests et change
+# les valeurs attendues. Repli si git est indisponible (archive, CI sans .git).
+PERSONAL_FALLBACK = {"config/workspace.user.toml"}
+
+
+def _gitignored_paths() -> set:
+    """Chemins (relatifs au dépôt) des fichiers ignorés par git sous `COPIED`."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "--others", "--ignored",
+             "--exclude-standard", "-z", "--", *COPIED],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return set(PERSONAL_FALLBACK)
+    # `__pycache__` reste copié : sinon le premier import dans le bac à sable le
+    # crée et fausse les tests qui vérifient qu'une commande n'écrit rien.
+    return {p for p in out.split("\0") if p and "__pycache__" not in p} | PERSONAL_FALLBACK
+
+
+def _ignore_personal(ignored: set):
+    def ignore(directory: str, names: list) -> set:
+        rel = Path(directory).resolve().relative_to(REPO_ROOT)
+        return {n for n in names if (rel / n).as_posix() in ignored}
+    return ignore
+
 
 # Exécutables réels dont les scripts ont besoin lorsqu'on isole le PATH
 # (tests qui doivent faire *disparaître* un binaire, p. ex. screen/tmux).
 ESSENTIAL_BINARIES = [
     "awk", "basename", "bash", "cat", "chmod", "cp", "cut", "date", "dirname",
-    "env", "find", "grep", "head", "id", "ln", "ls", "mkdir", "mktemp", "mv",
+    "env", "find", "git", "grep", "head", "id", "ln", "ls", "mkdir", "mktemp", "mv",
     "python3", "readlink", "rm", "sed", "sh", "sleep", "sort", "tail", "touch",
     "tr", "wc", "xargs",
 ]
@@ -84,13 +111,14 @@ class Sandbox:
 
         if copy_repo:
             self.repo.mkdir()
+            ignored = _gitignored_paths()
             for name in COPIED:
                 src = REPO_ROOT / name
                 if not src.exists():
                     continue
                 dst = self.repo / name
                 if src.is_dir():
-                    shutil.copytree(src, dst, symlinks=True)
+                    shutil.copytree(src, dst, symlinks=True, ignore=_ignore_personal(ignored))
                 else:
                     shutil.copy2(src, dst)
                     dst.chmod(src.stat().st_mode)
@@ -139,6 +167,11 @@ class Sandbox:
     def env(self, hide: tuple = (), isolate: bool = False, **extra: str) -> dict:
         env = dict(os.environ)
         env.pop("ARC_WORKSPACE", None)
+        # `coach_doctor.py` (#31) lit ces variables : une valeur héritée du
+        # shell du contributeur (ou d'un `export` resté dans un terminal CI)
+        # ne doit jamais fuiter dans un test qui ne les fixe pas lui-même.
+        for leaky in ("ARC_DOCTOR_NOW", "GARMIN_TOKENS_DIR", "GARMINTOKENS", "ARC_FAKE_UNAME"):
+            env.pop(leaky, None)
         if isolate or hide:
             path = str(self.isolated_bin(tuple(hide)))
         else:

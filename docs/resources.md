@@ -1,4 +1,4 @@
-# 📚 Ressources
+# Ressources
 
 Le dossier `resources/` est votre **base de connaissances personnelle** que les agents consultent pour fournir des conseils fondés sur des preuves.
 
@@ -160,6 +160,13 @@ Oui, mais les agents ne peuvent pas les lire directement. Ajoutez une **descript
 ### Les ressources sont-elles partagées avec le dépôt public ?
 
 **Non.** Le dossier `resources/` est exclu du dépôt via `.gitignore`. Il reste strictement local à votre machine.
+
+### Une page de référence est fournie pour le cycle menstruel
+
+[Cycle menstruel (opt-in)](cycle-menstruel.md) est livrée avec la documentation (le dossier
+`resources/` étant exclu du dépôt) ; elle cite ses sources (consensus IOC sur le RED-S 2023,
+méta-analyse McNulty 2020). Copiez-la dans `resources/health/` si vous voulez que les agents la
+consultent comme le reste de votre base.
 
 ### Que se passe-t-il si je n'ai pas de ressources ?
 

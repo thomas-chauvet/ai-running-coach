@@ -1,9 +1,28 @@
-# 📊 Tableau de bord
+# Tableau de bord
 
 Le coach écrit tout dans votre workspace : séances, nuits, météo, plans, rapports.
 Le tableau de bord met ces fichiers **sous vos yeux** : courbe de forme, bilan du
 matin, semaine planifiée face au réalisé, séances avec leurs splits, prédictions,
 calendrier — et le texte du coach à côté des chiffres.
+
+<!-- arc-video:tableau-de-bord -->
+<div class="arc-video-card" markdown>
+
+[![Tour du propriétaire](../video/tableau-de-bord/poster.jpg)](../video/tableau-de-bord/index.html)
+
+<div markdown>
+
+<span class="arc-video__meta">En vidéo · Étape 05 · 1 min 29</span>
+
+**[Tour du propriétaire](../video/tableau-de-bord/index.html)** — Visite guidée du tableau de bord local, en lecture seule : une question par vue.
+
+[Regarder](../video/tableau-de-bord/index.html) · [English](../video/tableau-de-bord/index.html?lang=en) · [Toutes les vidéos](../videos.md)
+
+</div>
+
+</div>
+<!-- /arc-video -->
+
 
 ![Vue « Aujourd'hui » : verdict du coach, bilan du matin, séance du jour et forme](../assets/dashboard/aujourdhui.webp)
 
@@ -33,21 +52,138 @@ scripts/dashboard.sh --rebuild     # reconstruit l'index de zéro
 ```
 
 L'index se met à jour tout seul : un fichier écrit par un agent — la
-synchronisation du matin, un rapport, un plan — apparaît à la requête suivante (au
-plus 30 secondes), sans relancer le serveur.
+synchronisation du matin, un rapport, un plan — apparaît en 30 secondes au plus,
+sans relancer le serveur. La réindexation tourne en arrière-plan, jamais pendant
+une requête : aucune page n'attend. Un passage sans changement ne recalcule pas
+les métriques, et un passage avec changement ne recalcule que les séances touchées.
+Au démarrage, la page s'ouvre tout de suite et les données arrivent dès la fin du
+premier index (une dizaine de secondes sur un long historique avec fichiers FIT).
 
-## Ce qu'il vous montre
+!!! note "Après une mise à jour du moteur"
+    Vos données apparaissent seules, mais le **code** du tableau de bord est chargé
+    au démarrage. Après un `git pull` du moteur, relancez `scripts/dashboard.sh`
+    (ou `systemctl --user restart arc-dashboard` pour le service décrit dans
+    [Machine coach & mode headless](headless.md)) ; en conteneur, reconstruisez
+    l'image ([Mettre à jour](docker.md#mettre-a-jour)).
 
-| Vue | Pour répondre à |
-|---|---|
-| [Aujourd'hui](views.md#aujourdhui) | Je cours, j'allège ou je me repose ? Comment était ma nuit ? |
-| [Forme & charge](views.md#forme-charge) | Où en est ma condition, ma fatigue, ma fraîcheur ? Mon volume progresse-t-il raisonnablement ? |
-| [Santé](views.md#sante) | HRV, FC de repos, readiness, sommeil — et les verdicts du coach jour par jour |
-| [Semaine](views.md#semaine) | Qu'est-ce qui était prévu, qu'est-ce qui a été fait, avec quelle météo ? |
-| [Séances](views.md#seances) | L'historique complet, trié comme je veux ; les splits et l'analyse du coach |
-| [Performance](views.md#performance) | Ma VO2max estimée, mes temps prédits, mes records |
-| [Calendrier](views.md#calendrier) | Ma régularité sur l'année, mon cumul comparé aux années précédentes |
-| [Rapports](views.md#rapports) | Les bilans du coach, lisibles, sans ouvrir l'IDE |
+## Visite guidée
+
+Chaque vue répond à une question. Un clic sur une carte ouvre sa description
+détaillée : comment la lire, d'où viennent ses données, que faire si elle est vide.
+
+<div class="grid cards arc-tour" markdown>
+
+-   [![Aujourd'hui](../assets/dashboard/vignette-aujourdhui.webp)](views.md#aujourdhui)
+
+    **[Aujourd'hui](views.md#aujourdhui)** · *Je cours, j'allège ou je me repose ?*
+
+    Le verdict du coach et sa raison, le bilan du matin situé sur votre référence,
+    la séance du jour avec sa météo.
+
+-   [![Forme & charge](../assets/dashboard/vignette-forme.webp)](views.md#forme-charge)
+
+    **[Forme & charge](views.md#forme-charge)** · *Où en est ma forme ?*
+
+    Condition, fatigue et forme sur des mois, le ratio de charge, le volume de
+    chaque semaine.
+
+-   **[Analyse](views.md#analyse)** · *Ma technique et ma durabilité progressent-elles ?*
+
+    Polarisation 80/20, découplage aérobie, VAM, efficacité en descente,
+    durabilité et segments de montée — tout ce qui vient des échantillons FIT
+    téléchargés par le skill [`fit-download`](../skills/fit-download.md).
+
+-   [![Santé](../assets/dashboard/vignette-sante.webp)](views.md#sante)
+
+    **[Santé](views.md#sante)** · *Comment mon corps encaisse-t-il ?*
+
+    HRV, FC de repos, readiness et sommeil en tendance, avec la frise des verdicts
+    du coach jour par jour.
+
+-   [![Semaine](../assets/dashboard/vignette-semaine.webp)](views.md#semaine)
+
+    **[Semaine](views.md#semaine)** · *Qu'est-ce qui était prévu, qu'est-ce qui a été fait ?*
+
+    Le plan du coach face au réalisé, jour par jour, statut et météo compris — et
+    les semaines à venir.
+
+-   [![Détail d'une séance](../assets/dashboard/vignette-seance.webp)](views.md#detail-dune-seance)
+
+    **[Séances](views.md#seances)** · *Comment ça s'est passé ?*
+
+    Tout l'historique, triable ; pour chaque séance, les chiffres clés, les splits
+    et l'analyse complète du coach.
+
+-   [![Performance](../assets/dashboard/vignette-performance.webp)](views.md#performance)
+
+    **[Performance](views.md#performance)** · *Que puis-je viser ?*
+
+    VO2max estimée, temps prédits pour votre objectif, records au kilomètre — et
+    toutes les hypothèses.
+
+-   [![Matériel](../assets/dashboard/vignette-materiel.webp)](views.md#materiel)
+
+    **[Matériel](views.md#materiel)** · *Mon matériel est-il en état ?*
+
+    Kilométrage de chaque paire, équipement et kits, inspections photo, et une fiche par
+    paire (bilan de carrière, kilomètres par mois, séances).
+
+-   [![Trail Shape](../assets/dashboard/vignette-trail-shape.webp)](views.md#trail-shape)
+
+    **[Trail Shape](views.md#trail-shape)** · *Suis-je prêt pour mon objectif ?*
+
+    Un score sur 100 : volume, plus longue sortie et D+ des huit dernières semaines
+    face aux exigences de la course — chaque composante détaillée, jamais un verdict.
+
+-   [![Calendrier](../assets/dashboard/vignette-calendrier.webp)](views.md#calendrier)
+
+    **[Calendrier](views.md#calendrier)** · *Suis-je régulier ?*
+
+    L'année en carte de chaleur et le cumul de distance comparé d'une année à
+    l'autre.
+
+-   **[Décisions](views.md#decisions)** · *Pourquoi cette séance a-t-elle changé ?*
+
+    Le journal de chaque ajustement du coach — bilan matinal, garde-fou, blessure,
+    météo, demande de l'athlète — avec ce qui l'a justifié, filtrable par déclencheur.
+
+-   [![Rapports](../assets/dashboard/vignette-rapport.webp)](views.md#rapports)
+
+    **[Rapports](views.md#rapports)** · *Qu'en a conclu le coach ?*
+
+    Bilans hebdomadaires, validations, comparaisons de parcours et analyses de
+    course, lisibles sans ouvrir l'IDE.
+
+-   [![Coach](../assets/dashboard/vignette-coach.webp)](chat.md)
+
+    **[Coach](chat.md)** · *Je garde ma séance ?*
+
+    Le chat avec le coach, s'il est activé : mêmes agents et skills qu'en IDE, trace de
+    chaque étape, et votre accord avant toute écriture sur Garmin.
+
+</div>
+
+S'y ajoutent la vue [Nutrition](views.md#nutrition), si le nutritionniste fait partie
+du staff, et la liste des [fichiers hors contrat](views.md#fichiers-hors-contrat).
+Toutes les vues suivent le thème sombre et tiennent sur un téléphone :
+[captures](views.md#en-sombre-et-sur-le-telephone).
+
+## Au quotidien
+
+Le tableau de bord ne pose pas de questions : il montre ce que le coach a écrit.
+Quelques habitudes suffisent pour qu'il soit toujours à jour.
+
+| Quand | Ouvrir | Ce qu'on y cherche |
+|---|---|---|
+| **Le matin** | [Aujourd'hui](views.md#aujourdhui) | Le verdict et la séance du jour. Pas de verdict ? Demandez au coach « je cours aujourd'hui ? » : il fait le bilan, tranche et l'écrit. |
+| **Après une séance** | [Séances](views.md#seances) → détail | Les splits, la FC, l'analyse du coach — une fois la séance synchronisée. |
+| **Le dimanche** | [Semaine](views.md#semaine), [Forme & charge](views.md#forme-charge) | Le réalisé face au plan, la tendance de forme. Puis, avec le coach, le plan de la semaine suivante. |
+| **Quand le coach planifie** | [Semaine](views.md#semaine) | Que chaque semaine du plan est bien lisible : un fichier `planning/Semaine_<lundi>.md` par semaine, ou un seul fichier multi-semaines (`weeks[]`, #69) — les deux formes s'affichent semaine par semaine. |
+| **Avant une course** | [Performance](views.md#performance), [Rapports](views.md#rapports) | Les temps prédits, le plan de course du stratège. |
+
+Avec une [machine coach](headless.md), la synchronisation de chaque matin fait le
+premier pas pour vous : le bilan et la séance de la veille sont déjà là quand vous
+ouvrez la page.
 
 Le détail de chaque vue, captures à l'appui : [Les vues](views.md).
 
@@ -69,7 +205,8 @@ observe et juge, le code compte.
 
 - **Charge d'une séance** : TRIMP de Banister (FC moyenne, FC max et FC de repos du
   profil), ou effort perçu faute de fréquence cardiaque.
-- **Condition, fatigue, forme** : moyennes exponentielles sur 42 et 7 jours.
+- **Condition, fatigue, forme** : la condition et la fatigue sont des moyennes
+  exponentielles de la charge sur 42 et 7 jours ; la forme est leur écart.
 - **VO2max effective et prédictions** : estimées à partir de l'allure et de la FC
   **moyennes** des séances de course. Des ordres de grandeur, pas des mesures ; la
   vue Performance liste toutes les hypothèses.
@@ -88,10 +225,19 @@ contrat » dans le menu). Pour tout remettre d'aplomb : [Migrer vos fichiers](mi
 ## Sécurité
 
 - Le serveur n'écoute **que sur `127.0.0.1`** : rien n'est visible depuis le réseau.
-  L'adresse n'est volontairement pas configurable.
+  `scripts/dashboard.sh` n'offre aucun moyen d'en changer.
 - Lecture seule : il n'écrit que sa propre base, dans `.arc/`.
 - Une page tierce qui tenterait de l'atteindre en se faisant passer pour
   `localhost` est refusée (protection contre le *DNS rebinding*).
+- Vos données ne quittent pas la machine. Deux ressources viennent de l'extérieur :
+  les polices de caractères (Inter, Sora), depuis Google Fonts ; hors ligne, le
+  navigateur se rabat sur ses polices système. Et les tuiles du fond de carte de la
+  page séance (OpenTopoMap par défaut) : le serveur de tuiles voit la zone affichée,
+  jamais la trace ni la séance. Pour n'en charger aucune, posez
+  `map_tiles = ""` dans la section `[dashboard]` de `config/workspace.user.toml` et
+  relancez le tableau de bord : la trace s'affiche alors sur un fond uni.
 
 Pour le consulter depuis une autre machine, passez par un tunnel SSH plutôt que
-d'ouvrir un port : voir [Machine coach & mode headless](headless.md).
+d'ouvrir un port : voir [Machine coach & mode headless](headless.md). Si votre serveur
+a déjà un reverse proxy avec authentification, le tableau de bord peut s'y ranger en
+conteneur, workspace en lecture seule : [Derrière un reverse proxy (Docker)](docker.md).

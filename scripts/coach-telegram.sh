@@ -1,67 +1,53 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ai-running-coach — discuter avec le coach sur Telegram (Claude Code Channels)
+# ai-running-coach — service du bot Telegram (scripts/arc_telegram.py, #174)
 #
-# Fait tourner en permanence, sur la machine « coach », une session
-#   claude --channels plugin:telegram@claude-plugins-official
-# dans le workspace : vos messages au bot arrivent dans cette session (agents,
-# skills, serveur MCP garmin, fichiers MD) et le coach répond dans Telegram.
-# Les notifications de la sync quotidienne arrivent dans la même conversation
-# (scripts/notify.sh, provider = "telegram").
+# Fait tourner en permanence, sur la machine « coach », le bot Telegram :
+# `python3 scripts/arc_telegram.py run --workspace <workspace>`. Interrogation périodique
+# (long polling) de l'API Telegram : aucune adresse publique à exposer. Retours en un geste
+# (boutons du résumé quotidien, /rpe, /douleur, /statut) SANS modèle ni clé d'API ; conversation
+# libre seulement si [telegram].chat_bridge = true (docs/telegram.md).
+#
+# Le jeton du bot vit dans ~/.config/ai-running-coach/telegram.env (mode 600), jamais dans
+# le TOML : le service le lit lui-même ([telegram].token_file) et ne l'écrit jamais dans
+# ses journaux. Aucune clé n'est passée par l'unité de service.
 #
 # Usage :
-#   scripts/coach-telegram.sh run --pairing  # 1re fois, au premier plan : appairage du compte
-#   scripts/coach-telegram.sh install        # permissions + service (systemd --user / launchd / tmux)
+#   scripts/coach-telegram.sh run        # premier plan (utilisé par le service)
+#   scripts/coach-telegram.sh install    # service systemd --user (Linux) / launchd (macOS), démarre au boot
 #   scripts/coach-telegram.sh start|stop|restart|status|logs
 #   scripts/coach-telegram.sh uninstall
-#
-# Prérequis : Claude Code connecté avec un abonnement claude.ai (pas de clé API),
-# Bun, tmux, plugin installé et configuré :
-#   /plugin install telegram@claude-plugins-official
-#   /telegram:configure <token BotFather>
-# Configuration : section [telegram] de config/workspace.toml.
+#   scripts/coach-telegram.sh --dry-run install   # affiche sans rien écrire ni lancer
 # =============================================================================
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
 
 DRY_RUN="${ARC_DRY_RUN:-0}"
-PAIRING=0
 ACTION=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --pairing) PAIRING=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
-        --help|-h) sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        run|supervise|install|uninstall|start|stop|restart|status|logs) ACTION="$1"; shift ;;
+        --help|-h) sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        run|install|uninstall|start|stop|restart|status|logs) ACTION="$1"; shift ;;
         *) die "Option inconnue : $1 (voir --help)" ;;
     esac
 done
-[[ -n "$ACTION" ]] || { sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ -n "$ACTION" ]] || { sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
-export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-CHANNEL="plugin:telegram@claude-plugins-official"
-PERMISSION_MODE="$(toml_get telegram permission_mode acceptEdits)"
-DAILY_RESTART="$(toml_get telegram daily_restart 03:30)"
-TG_DIR="${TELEGRAM_STATE_DIR:-$HOME/.claude/channels/telegram}"
-SELF="$ARC_ENGINE_ROOT/scripts/coach-telegram.sh"
-# Aussi le nom de la socket tmux (-L) : serveur dédié, sinon le restart systemd
-# (KillMode=control-group) tuerait toutes les sessions tmux de l'utilisateur.
-TMUX_SESSION="coach-telegram"
 SERVICE_NAME="ai-running-coach-telegram"
-SYSTEMD_DIR="$HOME/.config/systemd/user"
+SYSTEMD_UNIT="$HOME/.config/systemd/user/$SERVICE_NAME.service"
 LAUNCHD_LABEL="com.ai-running-coach.telegram"
-LAUNCHD_DIR="$HOME/Library/LaunchAgents"
+LAUNCHD_PLIST="$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
 LOG_DIR="$ARC_WORKSPACE/logs"
 LOG_FILE="$LOG_DIR/telegram.log"
-SETTINGS_FILE="$ARC_WORKSPACE/.claude/settings.local.json"
-SETTINGS_TEMPLATE="$ARC_ENGINE_ROOT/templates/settings.telegram.json"
+SCREEN_NAME="coach-telegram"
+TOKEN_FILE_DEFAULT="$HOME/.config/ai-running-coach/telegram.env"
+BOT_SCRIPT="$ARC_ENGINE_ROOT/scripts/arc_telegram.py"
+# uname : ARC_FAKE_UNAME est le levier des tests (tests/README.md), comme le stub uname.
 OS="$(uname -s)"
-
-# Rappel injecté dans la session : chaque message Telegram passe par le skill
-# telegram-chat (réponse via l'outil reply, confirmation avant écriture Garmin).
-SYSTEM_HINT="Messages arriving through the Telegram channel come from the athlete on their phone. Before handling one, load the telegram-chat skill and follow it: reply only with the channel's reply tool, keep it short, and never push to the Garmin calendar without an explicit OK sent in a later Telegram message."
 
 run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -82,259 +68,139 @@ write_file() {
     cat > "$file"
 }
 
-# Channels exige une connexion claude.ai (abonnement) — pas de clé API.
-check_login() {
-    local status
-    status="$(claude auth status 2>/dev/null || true)"
-    if ! printf '%s' "$status" | grep -q '"loggedIn": *true'; then
-        [[ "$DRY_RUN" -eq 1 ]] && { warn "Claude Code n'est pas connecté (ignoré en dry-run)."; return 0; }
-        die "Claude Code n'est pas connecté. Lancez 'claude' puis '/login' (compte claude.ai, pas de clé API)."
-    fi
-    [[ -z "${ANTHROPIC_API_KEY:-}" ]] \
-        || die "ANTHROPIC_API_KEY est défini : retirez-le, la session doit utiliser l'abonnement claude.ai."
-    return 0
+# Échappe une chaîne pour l'insérer dans du XML (plist launchd).
+xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
-# Politique d'accès du bot : « allowlist » obligatoire hors appairage — la session
-# lit des données de santé et écrit dans le calendrier Garmin.
-dm_policy() {
-    [[ -f "$TG_DIR/access.json" ]] || { echo "absent"; return 0; }
-    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("dmPolicy", "pairing"))' \
-        "$TG_DIR/access.json" 2>/dev/null || echo "illisible"
+python_bin() {
+    command -v python3 && return 0
+    [[ "$DRY_RUN" -eq 1 ]] && { warn >&2 "python3 introuvable (ignoré en dry-run)."; return 0; }
+    die "python3 introuvable."
 }
 
-require_bin() {
-    have "$1" && return 0
-    [[ "$DRY_RUN" -eq 1 ]] && { warn "$1 introuvable (ignoré en dry-run) — $2"; return 0; }
-    die "$1 introuvable — $2"
-}
-
-preflight() {
-    require_bin claude "installez Claude Code : curl -fsSL https://claude.ai/install.sh | bash"
-    require_bin bun "le plugin Telegram en a besoin : curl -fsSL https://bun.sh/install | bash"
-    have claude && check_login
-    [[ -n "${TELEGRAM_BOT_TOKEN:-}" || -f "$TG_DIR/.env" ]] \
-        || die "Token du bot absent ($TG_DIR/.env). Dans Claude Code : /plugin install telegram@claude-plugins-official puis /telegram:configure <token>."
-    # Mode passerelle : un seul outil (mcp__leanproxy__…) porte lecture, envoi ET
-    # suppression. L'autoriser contournerait le deny des suppressions ; ne pas
-    # l'autoriser bloquerait la session sur une demande de permission que le
-    # plugin ne relaie pas. Pas de compromis sûr : refus.
-    if grep -qs '"leanproxy"[[:space:]]*:' "$ARC_WORKSPACE/.mcp.json"; then
-        die "Mode passerelle leanproxy détecté ($ARC_WORKSPACE/.mcp.json) : incompatible avec le coach sur Telegram.
-  Réinstallez en mode direct (./install.sh sans --use-leanproxy), ou utilisez Remote Control."
-    fi
-    local policy
-    policy="$(dm_policy)"
-    if [[ "$policy" != "allowlist" && "$PAIRING" -eq 0 ]]; then
-        die "Politique d'accès du bot : « $policy ». Appairez d'abord votre compte :
-  scripts/coach-telegram.sh run --pairing
-  → écrivez au bot, puis dans la session : /telegram:access pair <code>
-  → puis : /telegram:access policy allowlist"
-    fi
-}
-
-# Une seule session longue par workspace, idéalement : deux sessions qui
-# écrivent les mêmes fichiers MD se marchent dessus. Simple avertissement.
-warn_if_remote_control_runs() {
-    if (have systemctl && systemctl --user is-active --quiet ai-running-coach-remote 2>/dev/null) \
-        || (have tmux && tmux has-session -t coach-remote 2>/dev/null) \
-        || (have screen && screen -ls 2>/dev/null | grep -q coach-remote); then
-        warn "Remote Control tourne aussi (scripts/coach-remote.sh) : évitez de travailler sur les mêmes fichiers depuis les deux à la fois."
-    fi
-}
-
-# Comment le service est géré sur cette machine.
-# NE JAMAIS appeler « die » ici (utilisé en substitution de commande, voir
-# coach-remote.sh) : on renvoie un statut.
+# Comment le service est géré sur cette machine (voir coach-remote.sh : jamais de
+# « die » ici, backend est appelé en substitution de commande).
 backend() {
-    have tmux || { echo none; return 1; }
     if [[ "$OS" == "Darwin" ]]; then echo launchd; return 0
     elif have systemctl && systemctl --user show-environment >/dev/null 2>&1; then echo systemd; return 0
+    elif have screen || have tmux; then echo screen; return 0
     fi
-    echo tmux
-    return 0
+    echo none
+    return 1
 }
-NO_BACKEND_MSG="tmux introuvable : la session interactive de Claude Code a besoin d'un terminal (installez tmux)."
+
+NO_BACKEND_MSG="Ni systemd --user, ni screen/tmux disponibles sur cette machine — service impossible."
 
 # ---------------------------------------------------------------------------
-# run / supervise — premier plan
+# run — premier plan
 # ---------------------------------------------------------------------------
 do_run() {
-    preflight
+    local py
+    py="$(python_bin)"
+    [[ -f "$BOT_SCRIPT" ]] || die "Service introuvable : $BOT_SCRIPT"
     cd "$ARC_WORKSPACE"
-    log "Session Telegram — workspace : $ARC_WORKSPACE ($PERMISSION_MODE)"
-    if [[ "$PAIRING" -eq 1 ]]; then
-        log "Appairage : écrivez au bot, puis tapez ici /telegram:access pair <code> et /telegram:access policy allowlist. Ensuite Ctrl+C deux fois."
-    fi
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        run claude --channels "$CHANNEL" --permission-mode "$PERMISSION_MODE" --append-system-prompt "…"
-        return 0
-    fi
-    exec claude --channels "$CHANNEL" --permission-mode "$PERMISSION_MODE" --append-system-prompt "$SYSTEM_HINT"
-}
-
-# Boucle lancée dans tmux : relance la session si elle s'arrête (crash, /exit).
-do_supervise() {
-    mkdir -p "$LOG_DIR"
-    while :; do
-        echo "===== $(date '+%F %T') — démarrage de la session Telegram =====" >> "$LOG_FILE"
-        "$SELF" run || echo "===== $(date '+%F %T') — session terminée (code $?) =====" >> "$LOG_FILE"
-        sleep 30
-    done
-}
-
-tmux_start() {
-    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        ok "Session tmux $TMUX_SESSION déjà active."
-        return 0
-    fi
-    run tmux -L "$TMUX_SESSION" new-session -d -s "$TMUX_SESSION" -c "$ARC_WORKSPACE" "$SELF supervise"
-}
-
-tmux_stop() {
-    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        run tmux -L "$TMUX_SESSION" kill-session -t "$TMUX_SESSION"
-    fi
+    log "Démarrage du bot Telegram (workspace : $ARC_WORKSPACE, moteur : $ARC_ENGINE_ROOT)"
+    exec "$py" "$BOT_SCRIPT" run --workspace "$ARC_WORKSPACE"
 }
 
 # ---------------------------------------------------------------------------
-# install
+# install — service permanent
 # ---------------------------------------------------------------------------
-install_permissions() {
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '%s\n' "${C_YELLOW}[dry-run]${C_RESET} fusion de $SETTINGS_TEMPLATE dans $SETTINGS_FILE"
-        return 0
-    fi
-    python3 "$ARC_ENGINE_ROOT/scripts/coach_config.py" merge-permissions \
-        --file "$SETTINGS_FILE" --template "$SETTINGS_TEMPLATE"
-    ok "Permissions de la session Telegram : $SETTINGS_FILE (envois Garmin confirmés dans le chat, suppressions interdites)"
-}
-
-valid_time() { [[ "$1" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
-
 install_systemd() {
-    write_file "$SYSTEMD_DIR/$SERVICE_NAME.service" <<EOT
+    # Aucun EnvironmentFile : le service lit lui-même le fichier du jeton ([telegram].token_file).
+    write_file "$SYSTEMD_UNIT" <<EOT
 [Unit]
-Description=ai-running-coach — coach sur Telegram (Claude Code Channels, dans tmux)
+Description=ai-running-coach — bot Telegram (arc_telegram.py)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-# La session Claude Code est interactive : elle vit dans tmux, qui relance
-# elle-même la session en cas d'arrêt (coach-telegram.sh supervise).
-Type=forking
+Type=simple
 WorkingDirectory=$ARC_WORKSPACE
-Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$HOME
 Environment=ARC_WORKSPACE=$ARC_WORKSPACE
-ExecStart=$(command -v tmux) -L $TMUX_SESSION new-session -d -s $TMUX_SESSION -c $ARC_WORKSPACE $SELF supervise
-ExecStop=$(command -v tmux) -L $TMUX_SESSION kill-session -t $TMUX_SESSION
-RemainAfterExit=yes
+ExecStart=$ARC_ENGINE_ROOT/scripts/coach-telegram.sh run
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_FILE
+StandardError=append:$LOG_FILE
 
 [Install]
 WantedBy=default.target
 EOT
-    if [[ -n "$DAILY_RESTART" ]]; then
-        valid_time "$DAILY_RESTART" || die "[telegram].daily_restart invalide : « $DAILY_RESTART » (HH:MM attendu, ou \"\" pour désactiver)"
-        write_file "$SYSTEMD_DIR/$SERVICE_NAME-restart.service" <<EOT
-[Unit]
-Description=ai-running-coach — redémarrage quotidien de la session Telegram (contexte neuf)
-
-[Service]
-Type=oneshot
-ExecStart=$(command -v systemctl) --user restart $SERVICE_NAME.service
-EOT
-        write_file "$SYSTEMD_DIR/$SERVICE_NAME-restart.timer" <<EOT
-[Unit]
-Description=ai-running-coach — redémarrage quotidien de la session Telegram
-
-[Timer]
-OnCalendar=*-*-* $DAILY_RESTART:00
-Persistent=false
-
-[Install]
-WantedBy=timers.target
-EOT
-    fi
+    ok "Unité écrite : $SYSTEMD_UNIT"
     # Sans « linger », les services utilisateur meurent à la déconnexion SSH.
     run loginctl enable-linger "$USER"
     run systemctl --user daemon-reload
     run systemctl --user enable --now "$SERVICE_NAME"
-    if [[ -n "$DAILY_RESTART" ]]; then
-        run systemctl --user enable --now "$SERVICE_NAME-restart.timer"
-        ok "Redémarrage quotidien à $DAILY_RESTART (contexte neuf)."
-    fi
-    ok "Service $SERVICE_NAME activé (démarre au boot)."
+    ok "Service $SERVICE_NAME activé (démarre au boot). Journal : $LOG_FILE"
+    warn "Linux : « loginctl enable-linger $USER » garde le service actif après la déconnexion SSH (déjà demandé ci-dessus ; vérifiez avec « loginctl show-user $USER | grep Linger »)."
 }
 
 install_launchd() {
-    write_file "$LAUNCHD_DIR/$LAUNCHD_LABEL.plist" <<EOT
+    write_file "$LAUNCHD_PLIST" <<EOT
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>$LAUNCHD_LABEL</string>
   <key>ProgramArguments</key>
-  <array><string>$SELF</string><string>start</string></array>
+  <array>
+    <string>$(xml_escape "$ARC_ENGINE_ROOT")/scripts/coach-telegram.sh</string>
+    <string>run</string>
+  </array>
+  <key>WorkingDirectory</key><string>$(xml_escape "$ARC_WORKSPACE")</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>ARC_WORKSPACE</key><string>$ARC_WORKSPACE</string>
-    <key>PATH</key><string>$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    <key>HOME</key><string>$HOME</string>
+    <key>ARC_WORKSPACE</key><string>$(xml_escape "$ARC_WORKSPACE")</string>
+    <key>PATH</key><string>$(xml_escape "$HOME")/.local/bin:$(xml_escape "$HOME")/.claude/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>$(xml_escape "$HOME")</string>
   </dict>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>$LOG_FILE</string>
-  <key>StandardErrorPath</key><string>$LOG_FILE</string>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>$(xml_escape "$LOG_FILE")</string>
+  <key>StandardErrorPath</key><string>$(xml_escape "$LOG_FILE")</string>
 </dict>
 </plist>
 EOT
-    run launchctl bootout "gui/$(id -u)" "$LAUNCHD_DIR/$LAUNCHD_LABEL.plist" 2>/dev/null || true
-    run launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_DIR/$LAUNCHD_LABEL.plist"
-    if [[ -n "$DAILY_RESTART" ]]; then
-        valid_time "$DAILY_RESTART" || die "[telegram].daily_restart invalide : « $DAILY_RESTART » (HH:MM attendu, ou \"\" pour désactiver)"
-        write_file "$LAUNCHD_DIR/$LAUNCHD_LABEL.restart.plist" <<EOT
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>$LAUNCHD_LABEL.restart</string>
-  <key>ProgramArguments</key>
-  <array><string>$SELF</string><string>restart</string></array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>ARC_WORKSPACE</key><string>$ARC_WORKSPACE</string>
-    <key>PATH</key><string>$HOME/.local/bin:$HOME/.claude/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-  </dict>
-  <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>$((10#${DAILY_RESTART%%:*}))</integer><key>Minute</key><integer>$((10#${DAILY_RESTART##*:}))</integer></dict>
-</dict>
-</plist>
-EOT
-        run launchctl bootout "gui/$(id -u)" "$LAUNCHD_DIR/$LAUNCHD_LABEL.restart.plist" 2>/dev/null || true
-        run launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_DIR/$LAUNCHD_LABEL.restart.plist"
-        ok "Redémarrage quotidien à $DAILY_RESTART (contexte neuf)."
-    fi
-    ok "Service $LAUNCHD_LABEL chargé (démarre à l'ouverture de session)."
-    warn "macOS : empêchez la mise en veille (Réglages > Batterie, ou 'caffeinate -s') pour garder le coach joignable."
+    ok "LaunchAgent écrit : $LAUNCHD_PLIST"
+    run launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST" 2>/dev/null || true
+    run launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST"
+    ok "Service $LAUNCHD_LABEL chargé (démarre à l'ouverture de session). Journal : $LOG_FILE"
+    warn "macOS : empêchez la mise en veille (Réglages > Batterie, ou 'caffeinate -s') pour garder le bot joignable."
+}
+
+install_screen() {
+    warn "Pas de systemd --user : lancement dans une session screen/tmux (ne survit pas au reboot)."
+    do_start
 }
 
 do_install() {
-    PAIRING=0 preflight
+    python_bin >/dev/null
     [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$LOG_DIR"
-    install_permissions
+    if [[ "$(toml_get telegram enabled false)" != "true" ]]; then
+        warn "[telegram].enabled n'est pas « true » : activez-le (./install.sh --telegram, ou dans config/workspace.user.toml)."
+    fi
+    local token_file
+    token_file="$(expand_path "$(toml_get telegram token_file "$TOKEN_FILE_DEFAULT")")"
+    if [[ ! -f "$token_file" ]]; then
+        warn "$token_file absent : le service ne démarrera pas sans jeton (docs/telegram.md, étape BotFather)."
+    fi
+    if [[ -z "$(toml_get telegram allowed_chat_ids)" || "$(toml_get telegram allowed_chat_ids)" == "[]" ]]; then
+        warn "[telegram].allowed_chat_ids est vide : tout sera refusé (python3 scripts/arc_telegram.py whoami)."
+    fi
     local chosen
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
     case "$chosen" in
         systemd) install_systemd ;;
         launchd) install_launchd ;;
-        tmux)
-            warn "Pas de systemd --user : session tmux simple (ne survit pas au reboot, pas de redémarrage quotidien)."
-            tmux_start ;;
+        screen)  install_screen ;;
     esac
-    warn_if_remote_control_runs
     echo
-    log "Écrivez au bot depuis Telegram : « séance du jour ? »"
-    log "Notifications de la sync dans la même conversation : scripts/setup-telegram.sh"
+    log "Vérifier : scripts/coach-telegram.sh status   (journal : scripts/coach-telegram.sh logs)"
 }
 
 do_uninstall() {
@@ -342,18 +208,15 @@ do_uninstall() {
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
     case "$chosen" in
         systemd)
-            run systemctl --user disable --now "$SERVICE_NAME-restart.timer" 2>/dev/null || true
             run systemctl --user disable --now "$SERVICE_NAME" || true
-            run rm -f "$SYSTEMD_DIR/$SERVICE_NAME.service" "$SYSTEMD_DIR/$SERVICE_NAME-restart.service" "$SYSTEMD_DIR/$SERVICE_NAME-restart.timer"
+            run rm -f "$SYSTEMD_UNIT"
             run systemctl --user daemon-reload ;;
         launchd)
-            run launchctl bootout "gui/$(id -u)" "$LAUNCHD_DIR/$LAUNCHD_LABEL.restart.plist" 2>/dev/null || true
-            run launchctl bootout "gui/$(id -u)" "$LAUNCHD_DIR/$LAUNCHD_LABEL.plist" 2>/dev/null || true
-            run rm -f "$LAUNCHD_DIR/$LAUNCHD_LABEL.plist" "$LAUNCHD_DIR/$LAUNCHD_LABEL.restart.plist"
-            tmux_stop ;;
-        tmux) tmux_stop ;;
+            run launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST" || true
+            run rm -f "$LAUNCHD_PLIST" ;;
+        screen) do_stop ;;
     esac
-    ok "Service Telegram retiré (permissions de $SETTINGS_FILE conservées)."
+    ok "Service du bot Telegram retiré."
 }
 
 # ---------------------------------------------------------------------------
@@ -364,9 +227,16 @@ do_start() {
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
     case "$chosen" in
         systemd) run systemctl --user start "$SERVICE_NAME" ;;
-        launchd|tmux) tmux_start ;;
+        launchd) run launchctl kickstart "gui/$(id -u)/$LAUNCHD_LABEL" ;;
+        screen)
+            [[ "$DRY_RUN" -eq 1 ]] || mkdir -p "$LOG_DIR"
+            if have screen; then
+                run screen -dmS "$SCREEN_NAME" -L -Logfile "$LOG_FILE" "$0" run
+            else
+                run tmux new-session -d -s "$SCREEN_NAME" "$0 run 2>&1 | tee -a '$LOG_FILE'"
+            fi ;;
     esac
-    ok "Session Telegram démarrée (tmux -L $TMUX_SESSION attach -t $TMUX_SESSION pour la voir)."
+    ok "Bot Telegram démarré."
 }
 
 do_stop() {
@@ -374,36 +244,33 @@ do_stop() {
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
     case "$chosen" in
         systemd) run systemctl --user stop "$SERVICE_NAME" ;;
-        launchd|tmux) tmux_stop ;;
+        launchd) run launchctl kill SIGTERM "gui/$(id -u)/$LAUNCHD_LABEL" ;;
+        screen)
+            if have screen; then run screen -S "$SCREEN_NAME" -X quit || true
+            else run tmux kill-session -t "$SCREEN_NAME" || true; fi ;;
     esac
-    ok "Session Telegram arrêtée."
+    ok "Bot Telegram arrêté."
 }
 
 do_status() {
     local chosen
     chosen="$(backend)" || die "$NO_BACKEND_MSG"
-    [[ "$chosen" == "systemd" ]] && { systemctl --user status "$SERVICE_NAME" --no-pager 2>/dev/null | head -n 5 || true; }
-    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        ok "tmux $TMUX_SESSION actif — tmux -L $TMUX_SESSION attach -t $TMUX_SESSION (détacher : Ctrl-b d)"
-    else
-        warn "Session tmux $TMUX_SESSION absente : le bot ne répond pas (les notifications partent quand même)."
-    fi
-    log "Politique d'accès du bot : $(dm_policy)"
+    case "$chosen" in
+        systemd) systemctl --user status "$SERVICE_NAME" --no-pager || true ;;
+        launchd) launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null | grep -E "state|pid|last exit" || warn "Service non chargé." ;;
+        screen)
+            if have screen; then screen -ls | grep -q "$SCREEN_NAME" && ok "screen $SCREEN_NAME actif" || warn "Non démarré."
+            else tmux has-session -t "$SCREEN_NAME" 2>/dev/null && ok "tmux $SCREEN_NAME actif" || warn "Non démarré."; fi ;;
+    esac
 }
 
 do_logs() {
-    if tmux -L "$TMUX_SESSION" has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        tmux -L "$TMUX_SESSION" capture-pane -p -t "$TMUX_SESSION" -S -50
-    elif [[ -f "$LOG_FILE" ]]; then
-        tail -n 50 "$LOG_FILE"
-    else
-        die "Aucun journal : $LOG_FILE"
-    fi
+    [[ -f "$LOG_FILE" ]] || die "Aucun journal : $LOG_FILE"
+    tail -n 50 "$LOG_FILE"
 }
 
 case "$ACTION" in
     run) do_run ;;
-    supervise) do_supervise ;;
     install) do_install ;;
     uninstall) do_uninstall ;;
     start) do_start ;;
